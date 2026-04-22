@@ -48,6 +48,7 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showLogoutAllConfirm by remember { mutableStateOf(false) }
     var showRevokeConfirm by remember { mutableStateOf(false) }
 
     Surface(
@@ -97,6 +98,8 @@ fun SettingsScreen(
                 SettingRow("User ID", state.userId)
                 HorizontalDivider()
                 SettingRow("Статус сессии", state.sessionStatus)
+                HorizontalDivider()
+                SettingRow("Access token истекает", state.accessTokenExpiresAt)
                 HorizontalDivider()
                 SettingRowWithAction(
                     label = "Device UUID",
@@ -167,7 +170,22 @@ fun SettingsScreen(
                         if (state.isLoggingOut) {
                             "Выходим..."
                         } else {
-                            "Выйти из сессии"
+                            "Выйти из текущей сессии"
+                        }
+                    )
+                }
+
+                Button(
+                    onClick = { showLogoutAllConfirm = true },
+                    enabled = !state.isLoggingOutAll,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        if (state.isLoggingOutAll) {
+                            "Завершаем..."
+                        } else {
+                            "Выйти из всех сессий"
                         }
                     )
                 }
@@ -208,7 +226,7 @@ fun SettingsScreen(
     if (showLogoutConfirm) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirm = false },
-            title = { Text("Выйти из сессии?") },
+            title = { Text("Выйти из текущей сессии?") },
             text = {
                 Text("Текущая сессия будет завершена, но устройство останется зарегистрированным.")
             },
@@ -225,6 +243,33 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(
                     onClick = { showLogoutConfirm = false }
+                ) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    if (showLogoutAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutAllConfirm = false },
+            title = { Text("Выйти из всех сессий?") },
+            text = {
+                Text("Все активные сессии аккаунта будут завершены. Для продолжения потребуется снова войти в приложение.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutAllConfirm = false
+                        viewModel.logoutAllSessions(onLoggedOut)
+                    }
+                ) {
+                    Text("Выйти везде")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutAllConfirm = false }
                 ) {
                     Text("Отмена")
                 }

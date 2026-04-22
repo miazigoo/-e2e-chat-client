@@ -246,6 +246,13 @@ class BackendRepository @Inject constructor(
         sessionStore.clearSession(keepDeviceUuid = true)
     }
 
+    suspend fun logoutAllSessions() {
+        runCatching {
+            safe { api.logoutAllSessions().data }
+        }
+        sessionStore.clearSession(keepDeviceUuid = true)
+    }
+
     suspend fun revokeCurrentDevice() {
         runCatching {
             safe { api.revokeCurrentDevice().data }

@@ -37,6 +37,7 @@ import com.example.securechatapp.data.remote.dto.VerifyEmailCodeRequestDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeResponseDto
 import com.example.securechatapp.data.remote.dto.GetAttachmentResponseDto
 import com.example.securechatapp.data.remote.dto.ListMessageAttachmentsResponseDto
+import com.example.securechatapp.data.remote.dto.LogoutAllResponseDto
 import com.example.securechatapp.data.remote.dto.LogoutResponseDto
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -165,5 +166,8 @@ interface ChatBackendApi {
 
     @POST("auth/logout")
     suspend fun logoutSession(): ApiEnvelopeDto<LogoutResponseDto>
+
+    @POST("auth/logout-all")
+    suspend fun logoutAllSessions(): ApiEnvelopeDto<LogoutAllResponseDto>
 
 }

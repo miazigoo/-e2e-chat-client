@@ -603,3 +603,9 @@ data class LogoutResponseDto(
     @SerialName("revoked_sessions")
     val revokedSessions: Int,
 )
+@Serializable
+data class LogoutAllResponseDto(
+    val message: String,
+    @SerialName("revoked_sessions")
+    val revokedSessions: Int,
+)

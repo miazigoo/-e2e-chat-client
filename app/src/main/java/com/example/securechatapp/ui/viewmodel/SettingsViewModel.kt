@@ -7,6 +7,10 @@ import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
 import com.example.securechatapp.data.repository.BackendRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,18 +21,18 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
 
 data class SettingsUiState(
     val nickname: String = "—",
     val userId: String = "—",
     val sessionStatus: String = "Не авторизован",
     val deviceUuid: String = "—",
+    val accessTokenExpiresAt: String = "—",
     val darkThemeEnabled: Boolean = false,
     val lastHeartbeatAt: String = "ещё не отправлялся",
     val isSendingHeartbeat: Boolean = false,
     val isLoggingOut: Boolean = false,
+    val isLoggingOutAll: Boolean = false,
     val isRevokingDevice: Boolean = false,
     val error: String? = null,
     val info: String? = null,
@@ -58,6 +62,13 @@ class SettingsViewModel @Inject constructor(
                 val nickname = payload?.get("nickname")?.jsonPrimitive?.content ?: "—"
                 val userId = payload?.get("sub")?.jsonPrimitive?.content ?: "—"
 
+                val expiresAt = payload
+                    ?.get("exp")
+                    ?.jsonPrimitive
+                    ?.content
+                    ?.toLongOrNull()
+                    ?.let(::formatEpochSeconds)
+
                 _uiState.update {
                     it.copy(
                         nickname = nickname,
@@ -68,6 +79,7 @@ class SettingsViewModel @Inject constructor(
                             "Не авторизован"
                         },
                         deviceUuid = session.deviceUuid ?: "—",
+                        accessTokenExpiresAt = expiresAt ?: "—",
                     )
                 }
             }
@@ -137,6 +149,26 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun logoutAllSessions(onDone: () -> Unit) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoggingOutAll = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            repo.logoutAllSessions()
+
+            _uiState.update {
+                it.copy(isLoggingOutAll = false)
+            }
+
+            onDone()
+        }
+    }
+
     fun revokeCurrentDevice(onDone: () -> Unit) {
         viewModelScope.launch {
             _uiState.update {
@@ -176,7 +208,16 @@ class SettingsViewModel @Inject constructor(
 
     private fun formatHeartbeatTime(raw: String): String {
         return runCatching {
-            OffsetDateTime.parse(raw).format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
+            OffsetDateTime.parse(raw)
+                .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
         }.getOrDefault(raw)
+    }
+
+    private fun formatEpochSeconds(epochSeconds: Long): String {
+        return runCatching {
+            Instant.ofEpochSecond(epochSeconds)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
+        }.getOrDefault(epochSeconds.toString())
     }
 }
