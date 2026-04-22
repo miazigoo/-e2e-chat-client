@@ -199,6 +199,7 @@ fun ConversationScreen(
         if (state.attachmentSheetMessageId != null) {
             MessageAttachmentsDialog(
                 attachments = state.selectedMessageAttachments,
+                attachmentLocalStates = state.attachmentLocalStates,
                 isLoading = state.isLoadingAttachments,
                 downloadingAttachmentId = state.downloadingAttachmentId,
                 onDismiss = viewModel::dismissMessageAttachments,

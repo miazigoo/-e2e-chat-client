@@ -15,12 +15,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.data.files.AttachmentLocalState
 import com.example.securechatapp.data.repository.BackendRepository
 import java.util.Locale
 
 @Composable
 fun MessageAttachmentsDialog(
     attachments: List<BackendRepository.AttachmentUi>,
+    attachmentLocalStates: Map<Int, AttachmentLocalState>,
     isLoading: Boolean,
     downloadingAttachmentId: Int?,
     onDismiss: () -> Unit,
@@ -52,8 +54,12 @@ fun MessageAttachmentsDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         attachments.forEach { attachment ->
+                            val localState = attachmentLocalStates[attachment.attachmentId]
+                                ?: AttachmentLocalState.NOT_DOWNLOADED
+
                             AttachmentRow(
                                 attachment = attachment,
+                                localState = localState,
                                 isDownloading = downloadingAttachmentId == attachment.attachmentId,
                                 onClick = {
                                     if (attachment.canDownload) {
@@ -77,13 +83,19 @@ fun MessageAttachmentsDialog(
 @Composable
 private fun AttachmentRow(
     attachment: BackendRepository.AttachmentUi,
+    localState: AttachmentLocalState,
     isDownloading: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = attachment.canDownload && !isDownloading, onClick = onClick),
+            .clickable(
+                enabled = attachment.canDownload &&
+                        localState != AttachmentLocalState.DOWNLOADING &&
+                        !isDownloading,
+                onClick = onClick,
+            ),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
     ) {
@@ -93,7 +105,7 @@ private fun AttachmentRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             Text(
-                text = attachmentIcon(attachment),
+                text = attachmentIcon(attachment, localState),
                 modifier = Modifier.padding(end = 10.dp),
             )
 
@@ -108,6 +120,7 @@ private fun AttachmentRow(
                 Text(
                     text = buildAttachmentSubtitle(
                         attachment = attachment,
+                        localState = localState,
                         isDownloading = isDownloading,
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -120,10 +133,13 @@ private fun AttachmentRow(
 
 private fun buildAttachmentSubtitle(
     attachment: BackendRepository.AttachmentUi,
+    localState: AttachmentLocalState,
     isDownloading: Boolean,
 ): String {
     if (!attachment.canDownload) return "Файл недоступен"
-    if (isDownloading) return "Скачиваем..."
+    if (isDownloading || localState == AttachmentLocalState.DOWNLOADING) return "Скачивается..."
+    if (localState == AttachmentLocalState.DOWNLOADED) return "Уже скачан • нажми, чтобы открыть"
+    if (localState == AttachmentLocalState.FAILED) return "Ошибка загрузки • нажми, чтобы повторить"
 
     val parts = mutableListOf<String>()
 
@@ -141,12 +157,18 @@ private fun buildAttachmentSubtitle(
 
 private fun attachmentIcon(
     attachment: BackendRepository.AttachmentUi,
+    localState: AttachmentLocalState,
 ): String {
-    return when {
-        attachment.isImage -> "🖼"
-        attachment.mimeType?.startsWith("video/") == true -> "🎬"
-        attachment.mimeType?.startsWith("audio/") == true -> "🎵"
-        else -> "📎"
+    return when (localState) {
+        AttachmentLocalState.DOWNLOADED -> "📂"
+        AttachmentLocalState.DOWNLOADING -> "⏬"
+        AttachmentLocalState.FAILED -> "⚠️"
+        AttachmentLocalState.NOT_DOWNLOADED -> when {
+            attachment.isImage -> "🖼"
+            attachment.mimeType?.startsWith("video/") == true -> "🎬"
+            attachment.mimeType?.startsWith("audio/") == true -> "🎵"
+            else -> "📎"
+        }
     }
 }
 

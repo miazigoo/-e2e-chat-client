@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.data.files.AttachmentDownloadManager
+import com.example.securechatapp.data.files.AttachmentLocalState
 import com.example.securechatapp.data.files.AttachmentUploadManager
 import com.example.securechatapp.data.remote.dto.UserSearchItemDto
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
@@ -33,6 +34,7 @@ data class ChatsUiState(
     val activePeerUserId: Int? = null,
     val messages: List<BackendRepository.MessageUi> = emptyList(),
     val attachmentSheetMessageId: Int? = null,
+    val attachmentLocalStates: Map<Int, AttachmentLocalState> = emptyMap(),
     val selectedMessageAttachments: List<BackendRepository.AttachmentUi> = emptyList(),
     val isLoadingAttachments: Boolean = false,
     val downloadingAttachmentId: Int? = null,
@@ -428,6 +430,7 @@ class ChatsViewModel @Inject constructor(
             _state.value = _state.value.copy(
                 attachmentSheetMessageId = messageId,
                 selectedMessageAttachments = emptyList(),
+                attachmentLocalStates = emptyMap(),
                 isLoadingAttachments = true,
                 downloadingAttachmentId = null,
                 imagePreviewAttachmentId = null,
@@ -440,14 +443,22 @@ class ChatsViewModel @Inject constructor(
             runCatching {
                 repo.listMessageAttachments(messageId)
             }.onSuccess { attachments ->
+                val localStates = attachments.associate { attachment ->
+                    attachment.attachmentId to attachmentDownloadManager.getAttachmentState(
+                        attachment.attachmentId
+                    )
+                }
+
                 _state.value = _state.value.copy(
                     selectedMessageAttachments = attachments,
+                    attachmentLocalStates = localStates,
                     isLoadingAttachments = false,
                 )
             }.onFailure {
                 _state.value = _state.value.copy(
                     attachmentSheetMessageId = null,
                     selectedMessageAttachments = emptyList(),
+                    attachmentLocalStates = emptyMap(),
                     isLoadingAttachments = false,
                     error = it.message,
                 )
@@ -459,6 +470,7 @@ class ChatsViewModel @Inject constructor(
         _state.value = _state.value.copy(
             attachmentSheetMessageId = null,
             selectedMessageAttachments = emptyList(),
+            attachmentLocalStates = emptyMap(),
             isLoadingAttachments = false,
             downloadingAttachmentId = null,
         )
@@ -467,10 +479,40 @@ class ChatsViewModel @Inject constructor(
     fun onAttachmentSelected(
         attachment: BackendRepository.AttachmentUi,
     ) {
-        if (attachment.isImage) {
-            previewImageAttachment(attachment)
-        } else {
-            downloadAttachment(attachment.attachmentId)
+        val localState = attachmentDownloadManager.getAttachmentState(attachment.attachmentId)
+
+        _state.value = _state.value.copy(
+            attachmentLocalStates = _state.value.attachmentLocalStates + (
+                    attachment.attachmentId to localState
+                    )
+        )
+
+        when (localState) {
+            AttachmentLocalState.DOWNLOADED -> {
+                val opened = attachmentDownloadManager.openDownloadedAttachment(
+                    attachment.attachmentId
+                )
+                if (!opened) {
+                    _state.value = _state.value.copy(
+                        error = "Не удалось открыть скачанный файл"
+                    )
+                }
+            }
+
+            AttachmentLocalState.DOWNLOADING -> {
+                _state.value = _state.value.copy(
+                    info = "Файл уже скачивается"
+                )
+            }
+
+            AttachmentLocalState.FAILED,
+            AttachmentLocalState.NOT_DOWNLOADED -> {
+                if (attachment.isImage) {
+                    previewImageAttachment(attachment)
+                } else {
+                    downloadAttachment(attachment.attachmentId)
+                }
+            }
         }
     }
 
@@ -541,6 +583,9 @@ class ChatsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 downloadingAttachmentId = attachmentId,
+                attachmentLocalStates = _state.value.attachmentLocalStates + (
+                        attachmentId to AttachmentLocalState.DOWNLOADING
+                        ),
                 error = null,
                 info = null,
             )
@@ -551,6 +596,9 @@ class ChatsViewModel @Inject constructor(
                 if (downloadInfo == null) {
                     _state.value = _state.value.copy(
                         downloadingAttachmentId = null,
+                        attachmentLocalStates = _state.value.attachmentLocalStates + (
+                                attachmentId to AttachmentLocalState.FAILED
+                                ),
                         error = "Не удалось получить данные для скачивания",
                     )
                     return@onSuccess
@@ -558,6 +606,7 @@ class ChatsViewModel @Inject constructor(
 
                 runCatching {
                     attachmentDownloadManager.enqueueDownload(
+                        attachmentId = downloadInfo.attachmentId,
                         url = downloadInfo.downloadUrl,
                         fileName = downloadInfo.fileName,
                         mimeType = downloadInfo.mimeType,
@@ -565,17 +614,26 @@ class ChatsViewModel @Inject constructor(
                 }.onSuccess {
                     _state.value = _state.value.copy(
                         downloadingAttachmentId = null,
+                        attachmentLocalStates = _state.value.attachmentLocalStates + (
+                                attachmentId to AttachmentLocalState.DOWNLOADING
+                                ),
                         info = "Скачивание начато",
                     )
                 }.onFailure {
                     _state.value = _state.value.copy(
                         downloadingAttachmentId = null,
+                        attachmentLocalStates = _state.value.attachmentLocalStates + (
+                                attachmentId to AttachmentLocalState.FAILED
+                                ),
                         error = it.message ?: "Не удалось начать скачивание",
                     )
                 }
             }.onFailure {
                 _state.value = _state.value.copy(
                     downloadingAttachmentId = null,
+                    attachmentLocalStates = _state.value.attachmentLocalStates + (
+                            attachmentId to AttachmentLocalState.FAILED
+                            ),
                     error = it.message,
                 )
             }
