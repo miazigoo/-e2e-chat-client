@@ -223,10 +223,10 @@ class BackendRepository @Inject constructor(
         }
     }
 
-    suspend fun heartbeat() {
-        runCatching {
-            safe { api.sendHeartbeat().data }
-        }
+    suspend fun heartbeat(): String? {
+        return runCatching {
+            safe { api.sendHeartbeat().data }.lastSeenAt
+        }.getOrNull()
     }
 
     suspend fun updateFcmToken(token: String?) {
@@ -239,7 +239,14 @@ class BackendRepository @Inject constructor(
         }
     }
 
-    suspend fun logout() {
+    suspend fun logoutSession() {
+        runCatching {
+            safe { api.logoutSession().data }
+        }
+        sessionStore.clearSession(keepDeviceUuid = true)
+    }
+
+    suspend fun revokeCurrentDevice() {
         runCatching {
             safe { api.revokeCurrentDevice().data }
         }

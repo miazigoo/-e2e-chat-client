@@ -43,6 +43,7 @@ import java.time.format.DateTimeFormatter
 fun ChatsScreen(
     viewModel: ChatsViewModel,
     onConversationClick: (Int) -> Unit,
+    onOpenSettings: () -> Unit,
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
@@ -55,6 +56,7 @@ fun ChatsScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             ChatsTopBar(
                 onRefresh = viewModel::refreshConversations,
+                onOpenSettings = onOpenSettings,
                 onLogout = { viewModel.logout(onLoggedOut) },
                 isLoggingOut = state.isLoggingOut,
             )
@@ -180,6 +182,7 @@ fun ChatsScreen(
 @Composable
 private fun ChatsTopBar(
     onRefresh: () -> Unit,
+    onOpenSettings: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
 ) {
@@ -222,6 +225,10 @@ private fun ChatsTopBar(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            TextButton(onClick = onOpenSettings) {
+                Text("Настройки")
             }
 
             TextButton(onClick = onRefresh) {

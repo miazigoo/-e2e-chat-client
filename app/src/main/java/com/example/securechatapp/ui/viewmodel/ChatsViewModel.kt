@@ -287,7 +287,7 @@ class ChatsViewModel @Inject constructor(
     fun logout(onLoggedOut: () -> Unit) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoggingOut = true, error = null)
-            repo.logout()
+            repo.logoutSession()
             pollingJob?.cancel()
             heartbeatJob?.cancel()
             wsPingJob?.cancel()

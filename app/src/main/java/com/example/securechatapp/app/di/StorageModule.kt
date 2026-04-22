@@ -3,6 +3,7 @@ package com.example.securechatapp.app.di
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,4 +22,10 @@ object StorageModule {
     fun provideSessionLocalDataSource(
         @ApplicationContext context: Context,
     ): SessionLocalDataSource = SessionLocalDataSource(context.sessionDataStore)
+
+    @Provides
+    @Singleton
+    fun provideThemePreferenceDataSource(
+        @ApplicationContext context: Context,
+    ): ThemePreferenceDataSource = ThemePreferenceDataSource(context.sessionDataStore)
 }

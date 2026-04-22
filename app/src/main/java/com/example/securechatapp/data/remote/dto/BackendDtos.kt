@@ -597,3 +597,9 @@ data class GetAttachmentResponseDto(
     val downloadUrlExpiresIn: Int? = null,
 )
 
+@Serializable
+data class LogoutResponseDto(
+    val message: String,
+    @SerialName("revoked_sessions")
+    val revokedSessions: Int,
+)

@@ -18,8 +18,10 @@ import com.example.securechatapp.ui.screens.auth.SplashScreen
 import com.example.securechatapp.ui.screens.auth.VerifyEmailCodeScreen
 import com.example.securechatapp.ui.screens.chats.ChatsScreen
 import com.example.securechatapp.ui.screens.conversation.ConversationScreen
+import com.example.securechatapp.ui.screens.settings.SettingsScreen
 import com.example.securechatapp.ui.viewmodel.AuthViewModel
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
 private tailrec fun Context.findActivity(): ComponentActivity {
     return when (this) {
@@ -112,6 +114,23 @@ fun SecureChatNavHost() {
                 onConversationClick = { conversationId ->
                     navController.navigate(Routes.conversationRoute(conversationId))
                 },
+                onLoggedOut = {
+                    navController.navigate(Routes.Login) {
+                        popUpTo(Routes.Chats) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onOpenSettings = {
+                    navController.navigate(Routes.Settings)
+                },
+            )
+        }
+
+        composable(Routes.Settings) {
+            val settingsViewModel: SettingsViewModel = hiltViewModel()
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                onBack = { navController.popBackStack() },
                 onLoggedOut = {
                     navController.navigate(Routes.Login) {
                         popUpTo(Routes.Chats) { inclusive = true }
