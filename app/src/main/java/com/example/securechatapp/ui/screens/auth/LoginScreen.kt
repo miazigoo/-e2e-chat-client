@@ -1,19 +1,21 @@
 package com.example.securechatapp.ui.screens.auth
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.ui.components.TelegramAuthScaffold
+import com.example.securechatapp.ui.components.TelegramStatusCard
 import com.example.securechatapp.ui.viewmodel.AuthUiState
 
 @Composable
@@ -27,66 +29,81 @@ fun LoginScreen(
     var nickname by remember { mutableStateOf("@alice") }
     var password by remember { mutableStateOf("supersecret123") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    TelegramAuthScaffold(
+        title = "Secure Chat",
+        subtitle = "Вход в аккаунт в стиле Telegram",
     ) {
-        Text("Login", style = MaterialTheme.typography.headlineMedium)
-
         OutlinedTextField(
             value = nickname,
             onValueChange = { nickname = it },
-            label = { Text("Nickname") },
+            label = { Text("Никнейм") },
+            placeholder = { Text("@username") },
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            ),
         )
 
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text("Пароль") },
             visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            ),
         )
 
         state.errorMessage?.let {
-            Text(text = it, color = MaterialTheme.colorScheme.error)
+            TelegramStatusCard(text = it, isError = true)
         }
 
         state.infoMessage?.let {
-            Text(text = it)
+            TelegramStatusCard(text = it)
         }
 
         state.emailMasked?.let {
-            Text(text = "Код отправлен на: $it")
+            TelegramStatusCard(text = "Код отправлен на: $it")
         }
 
         state.debugCode?.let {
-            Text(text = "DEBUG CODE: $it")
+            TelegramStatusCard(text = "DEBUG CODE: $it")
         }
 
         Button(
             onClick = {
                 onLogin(
-                    nickname,
+                    nickname.trim(),
                     password,
                     onNeedVerifyCode,
                     onLoginSuccess,
                 )
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
             enabled = !state.isLoading,
-            contentPadding = PaddingValues(14.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         ) {
-            Text(if (state.isLoading) "Loading..." else "Login")
+            Text(if (state.isLoading) "Входим..." else "Войти")
         }
 
-        Button(
+        TextButton(
             onClick = onOpenRegister,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Open register")
+            Text("Создать аккаунт")
         }
     }
 }

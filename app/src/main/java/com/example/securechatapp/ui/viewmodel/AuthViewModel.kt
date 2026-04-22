@@ -46,6 +46,7 @@ class AuthViewModel @Inject constructor(
         password: String,
         email: String?,
         email2faEnabled: Boolean,
+        onSuccess: () -> Unit,
     ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -65,8 +66,9 @@ class AuthViewModel @Inject constructor(
                 is AppResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        infoMessage = "Аккаунт создан. Устройство зарегистрировано. Теперь входи.",
+                        infoMessage = "Аккаунт создан. Теперь войди.",
                     )
+                    onSuccess()
                 }
 
                 is AppResult.Error -> {

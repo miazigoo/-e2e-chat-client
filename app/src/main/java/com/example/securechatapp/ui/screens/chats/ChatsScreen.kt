@@ -1,357 +1,436 @@
 package com.example.securechatapp.ui.screens.chats
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.securechatapp.data.remote.dto.UserSearchItemDto
 import com.example.securechatapp.data.repository.BackendRepository
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ChatsScreen(
+    viewModel: ChatsViewModel,
+    onConversationClick: (Int) -> Unit,
     onLoggedOut: () -> Unit,
-    viewModel: ChatsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-
     var search by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingAttachmentName by remember { mutableStateOf<String?>(null) }
 
-    val listState = rememberLazyListState()
-
-    val attachmentPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        pendingAttachmentUri = uri
-        pendingAttachmentName = uri?.lastPathSegment ?: "attachment"
-    }
-
-    LaunchedEffect(state.activeConversationId, state.messages.size) {
-        if (state.activeConversationId != null && state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
-        }
-    }
-
-    if (state.activeConversationId == null) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Chats", style = MaterialTheme.typography.headlineSmall)
-
-                Button(
-                    onClick = { viewModel.logout(onLoggedOut) },
-                    enabled = !state.isLoggingOut,
-                ) {
-                    Text(if (state.isLoggingOut) "..." else "Logout")
-                }
-            }
-
-            Button(onClick = viewModel::refreshConversations) {
-                Text("Refresh")
-            }
-
-            OutlinedTextField(
-                value = search,
-                onValueChange = {
-                    search = it
-                    if (it.isBlank()) {
-                        viewModel.searchUsers("")
-                    }
-                },
-                label = { Text("Search user") },
-                modifier = Modifier.fillMaxWidth(),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            ChatsTopBar(
+                onRefresh = viewModel::refreshConversations,
+                onLogout = { viewModel.logout(onLoggedOut) },
+                isLoggingOut = state.isLoggingOut,
             )
 
-            Button(
-                onClick = { viewModel.searchUsers(search) },
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
-                Text("Search")
-            }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = {
+                                search = it
+                                if (it.isBlank()) viewModel.searchUsers("")
+                            },
+                            label = { Text("Поиск пользователей") },
+                            placeholder = { Text("@username") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            ),
+                        )
 
-            state.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
+                        Spacer(modifier = Modifier.height(10.dp))
 
-            if (state.isLoading) {
-                Text("Loading...")
-            }
+                        Button(
+                            onClick = { viewModel.searchUsers(search.trim()) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Text("Найти")
+                        }
+                    }
+                }
 
-            if (search.isNotBlank()) {
-                Text("Search results", style = MaterialTheme.typography.titleMedium)
+                state.error?.let {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoBanner(text = it, isError = true)
+                }
 
-                if (!state.isLoading && state.users.isEmpty()) {
-                    Text("No users found")
+                state.info?.let {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoBanner(text = it)
+                }
+
+                if (search.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SectionTitle("Результаты поиска")
+
+                    if (!state.isLoading && state.users.isEmpty()) {
+                        EmptyHint("Никого не найдено")
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(state.users, key = { it.userId }) { user ->
+                            SearchUserItem(
+                                user = user,
+                                onClick = {
+                                    viewModel.createConversation(user.userId) { conversationId ->
+                                        onConversationClick(conversationId)
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                SectionTitle("Чаты")
+
+                if (state.isLoading && state.conversations.isEmpty()) {
+                    EmptyHint("Загрузка...")
+                }
+
+                if (!state.isLoading && state.conversations.isEmpty()) {
+                    EmptyHint("Чатов пока нет")
                 }
 
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 ) {
-                    items(state.users) { user ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.createConversation(user.userId)
-                                }
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(user.nickname)
-                                Text("Tap to start chat")
-                            }
-                        }
+                    items(state.conversations, key = { it.conversationId }) { item ->
+                        ChatListItem(
+                            item = item,
+                            onClick = { onConversationClick(item.conversationId) }
+                        )
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        )
                     }
                 }
-            }
-
-            Text("Conversations", style = MaterialTheme.typography.titleMedium)
-
-            if (!state.isLoading && state.conversations.isEmpty()) {
-                Text("No conversations yet")
-            }
-
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(state.conversations) { item ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.openConversation(item.conversationId)
-                            }
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(item.title)
-                            Text("Unread: ${item.unreadCount}")
-                        }
-                    }
-                }
-            }
-        }
-        return
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Button(onClick = viewModel::backToConversationList) {
-                Text("Back")
-            }
-
-            Button(
-                onClick = { viewModel.logout(onLoggedOut) },
-                enabled = !state.isLoggingOut,
-            ) {
-                Text(if (state.isLoggingOut) "..." else "Logout")
-            }
-        }
-
-        Text(
-            text = if (state.activeConversationTitle.isBlank()) {
-                "Conversation"
-            } else {
-                state.activeConversationTitle
-            },
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error)
-        }
-
-        state.info?.let {
-            Text(it)
-        }
-
-        if (state.isUploadingAttachment) {
-            Text("Uploading attachment...")
-        }
-
-        if (state.isLoading && state.messages.isEmpty()) {
-            Text("Loading...")
-        }
-
-        if (!state.isLoading && state.messages.isEmpty()) {
-            Text("No messages yet")
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            state = listState,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(state.messages) { msg ->
-                MessageBubble(
-                    msg = msg,
-                    isDeleting = state.deletingMessageIds.contains(msg.messageId),
-                    onDeleteLocal = { viewModel.deleteMessageLocal(msg.messageId) },
-                    onDeleteGlobal = { viewModel.deleteMessageGlobal(msg.messageId) },
-                )
-            }
-        }
-
-        pendingAttachmentName?.let { name ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Attachment selected")
-                    Text(name)
-                    Button(
-                        onClick = {
-                            pendingAttachmentUri = null
-                            pendingAttachmentName = null
-                        }
-                    ) {
-                        Text("Clear attachment")
-                    }
-                }
-            }
-        }
-
-        OutlinedTextField(
-            value = message,
-            onValueChange = { message = it },
-            label = { Text("Message") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = { attachmentPicker.launch("*/*") },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Attach")
-            }
-
-            Button(
-                onClick = {
-                    val textToSend = message
-                    val attachmentToSend = pendingAttachmentUri
-                    viewModel.sendMessage(
-                        text = textToSend,
-                        attachmentUri = attachmentToSend,
-                    ) {
-                        message = ""
-                        pendingAttachmentUri = null
-                        pendingAttachmentName = null
-                    }
-                },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Send")
             }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(
-    msg: BackendRepository.MessageUi,
-    isDeleting: Boolean,
-    onDeleteLocal: () -> Unit,
-    onDeleteGlobal: () -> Unit,
+private fun ChatsTopBar(
+    onRefresh: () -> Unit,
+    onLogout: () -> Unit,
+    isLoggingOut: Boolean,
 ) {
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (msg.isMine) Arrangement.End else Arrangement.Start,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+        shadowElevation = 6.dp,
     ) {
-        Card(
+        Row(
             modifier = Modifier
-                .widthIn(max = 320.dp)
-                .fillMaxHeight(),
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    text = if (msg.isMine) "Me" else "Peer",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "✈",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.titleMedium,
                 )
+            }
 
-                if (msg.hasAttachments) {
-                    Text("📎 attachment")
-                }
+            Spacer(modifier = Modifier.width(12.dp))
 
-                Text(msg.text)
-
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = msg.createdAt,
+                    text = "Secure Chat",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "your private messenger",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            TextButton(onClick = onRefresh) {
+                Text("Обновить")
+            }
+
+            TextButton(onClick = onLogout) {
+                Text(if (isLoggingOut) "..." else "Выйти")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchUserItem(
+    user: UserSearchItemDto,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AvatarCircle(label = user.nickname)
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = user.nickname,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Начать новый чат",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatListItem(
+    item: BackendRepository.ConversationUi,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AvatarCircle(label = item.title)
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
 
-                if (msg.isMine) {
-                    val status = when {
-                        msg.readAt != null -> "Read"
-                        msg.deliveredAt != null -> "Delivered"
-                        else -> "Sent"
-                    }
+                Spacer(modifier = Modifier.height(2.dp))
 
-                    Text(
-                        text = status,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                Text(
+                    text = item.lastMessagePreview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
-                Row(
-                    modifier = Modifier.padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Button(
-                        onClick = onDeleteLocal,
-                        enabled = !isDeleting,
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = formatChatListTime(item.updatedAt),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                if (item.unreadCount > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(if (isDeleting) "..." else "Hide")
-                    }
-
-                    if (msg.isMine) {
-                        Button(
-                            onClick = onDeleteGlobal,
-                            enabled = !isDeleting,
-                        ) {
-                            Text(if (isDeleting) "..." else "Delete all")
-                        }
+                        Text(
+                            text = item.unreadCount.toString(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AvatarCircle(label: String) {
+    val clean = label.trim().removePrefix("@")
+    val letter = clean.firstOrNull()?.uppercase() ?: "?"
+
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = letter,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.padding(bottom = 10.dp),
+    )
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = 12.dp),
+    )
+}
+
+@Composable
+private fun InfoBanner(
+    text: String,
+    isError: Boolean = false,
+) {
+    val bg = if (isError) {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    }
+    val content = if (isError) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = bg,
+    ) {
+        Text(
+            text = text,
+            color = content,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        )
+    }
+}
+
+private fun formatChatListTime(raw: String?): String {
+    if (raw.isNullOrBlank()) return ""
+
+    return runCatching {
+        val dt = OffsetDateTime.parse(raw)
+        val today = LocalDate.now()
+        when (dt.toLocalDate()) {
+            today -> dt.format(DateTimeFormatter.ofPattern("HH:mm"))
+            today.minusDays(1) -> "вчера"
+            else -> dt.format(DateTimeFormatter.ofPattern("dd.MM"))
+        }
+    }.getOrDefault("")
 }

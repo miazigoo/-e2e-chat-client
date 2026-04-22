@@ -1,8 +1,11 @@
 package com.example.securechatapp.ui.navigation
 
+import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -14,13 +17,26 @@ import com.example.securechatapp.ui.screens.auth.RegisterScreen
 import com.example.securechatapp.ui.screens.auth.SplashScreen
 import com.example.securechatapp.ui.screens.auth.VerifyEmailCodeScreen
 import com.example.securechatapp.ui.screens.chats.ChatsScreen
+import com.example.securechatapp.ui.screens.conversation.ConversationScreen
 import com.example.securechatapp.ui.viewmodel.AuthViewModel
+import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+
+private tailrec fun Context.findActivity(): ComponentActivity {
+    return when (this) {
+        is ComponentActivity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> error("No ComponentActivity found in context chain")
+    }
+}
 
 @Composable
 fun SecureChatNavHost() {
     val navController = rememberNavController()
-    val viewModel: AuthViewModel = hiltViewModel()
-    val state by viewModel.uiState.collectAsState()
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val authState by authViewModel.uiState.collectAsState()
+
+    val activity = LocalContext.current.findActivity()
+    val chatsViewModel: ChatsViewModel = hiltViewModel(activity)
 
     NavHost(
         navController = navController,
@@ -28,9 +44,9 @@ fun SecureChatNavHost() {
     ) {
         composable(Routes.Splash) {
             SplashScreen(
-                isAuthorized = state.isAuthorized,
+                isAuthorized = authState.isAuthorized,
                 onNavigateNext = {
-                    if (state.isAuthorized) {
+                    if (authState.isAuthorized) {
                         navController.navigate(Routes.Chats) {
                             popUpTo(Routes.Splash) { inclusive = true }
                         }
@@ -45,8 +61,8 @@ fun SecureChatNavHost() {
 
         composable(Routes.Login) {
             LoginScreen(
-                state = state,
-                onLogin = viewModel::login,
+                state = authState,
+                onLogin = authViewModel::login,
                 onOpenRegister = { navController.navigate(Routes.Register) },
                 onLoginSuccess = {
                     navController.navigate(Routes.Chats) {
@@ -61,8 +77,14 @@ fun SecureChatNavHost() {
 
         composable(Routes.Register) {
             RegisterScreen(
-                state = state,
-                onRegister = viewModel::register,
+                state = authState,
+                onRegister = authViewModel::register,
+                onRegisterSuccess = {
+                    navController.navigate(Routes.Login) {
+                        popUpTo(Routes.Register) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -73,9 +95,9 @@ fun SecureChatNavHost() {
         ) { backStackEntry ->
             val challengeId = backStackEntry.arguments?.getString("challengeId").orEmpty()
             VerifyEmailCodeScreen(
-                state = state,
+                state = authState,
                 challengeId = challengeId,
-                onVerify = viewModel::verifyEmailCode,
+                onVerify = authViewModel::verifyEmailCode,
                 onSuccess = {
                     navController.navigate(Routes.Chats) {
                         popUpTo(Routes.Login) { inclusive = true }
@@ -86,6 +108,34 @@ fun SecureChatNavHost() {
 
         composable(Routes.Chats) {
             ChatsScreen(
+                viewModel = chatsViewModel,
+                onConversationClick = { conversationId ->
+                    navController.navigate(Routes.conversationRoute(conversationId))
+                },
+                onLoggedOut = {
+                    navController.navigate(Routes.Login) {
+                        popUpTo(Routes.Chats) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Routes.ConversationPattern,
+            arguments = listOf(
+                navArgument(Routes.ConversationArg) { type = NavType.IntType }
+            ),
+        ) { backStackEntry ->
+            val conversationId = backStackEntry.arguments?.getInt(Routes.ConversationArg) ?: return@composable
+
+            ConversationScreen(
+                conversationId = conversationId,
+                viewModel = chatsViewModel,
+                onBack = {
+                    chatsViewModel.backToConversationList()
+                    navController.popBackStack()
+                },
                 onLoggedOut = {
                     navController.navigate(Routes.Login) {
                         popUpTo(Routes.Chats) { inclusive = true }

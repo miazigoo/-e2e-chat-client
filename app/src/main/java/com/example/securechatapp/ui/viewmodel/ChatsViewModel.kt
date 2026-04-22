@@ -5,15 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.data.files.AttachmentUploadManager
 import com.example.securechatapp.data.remote.dto.UserSearchItemDto
+import com.example.securechatapp.data.remote.websocket.RealtimeEvent
+import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.BackendRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class ChatsUiState(
@@ -35,6 +37,7 @@ data class ChatsUiState(
 class ChatsViewModel @Inject constructor(
     private val repo: BackendRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
+    private val realtimeWebSocketManager: RealtimeWebSocketManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatsUiState())
@@ -42,10 +45,13 @@ class ChatsViewModel @Inject constructor(
 
     private var pollingJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var wsPingJob: Job? = null
 
     init {
+        observeRealtimeEvents()
         refreshConversations()
         startHeartbeat()
+        startWsPing()
     }
 
     fun refreshConversations() {
@@ -82,19 +88,40 @@ class ChatsViewModel @Inject constructor(
         }
     }
 
-    fun createConversation(userId: Int) {
+    fun createConversation(
+        userId: Int,
+        onCreated: (Int) -> Unit = {},
+    ) {
         viewModelScope.launch {
             runCatching {
+                _state.value = _state.value.copy(isLoading = true, error = null)
+
                 val conversationId = repo.createConversation(userId)
-                refreshConversations()
-                openConversation(conversationId)
+                val items = repo.listConversations()
+
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    conversations = items,
+                    users = emptyList(),
+                    error = null,
+                )
+
+                onCreated(conversationId)
             }.onFailure {
-                _state.value = _state.value.copy(error = it.message)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = it.message,
+                )
             }
         }
     }
 
     fun openConversation(conversationId: Int) {
+        val previousConversationId = _state.value.activeConversationId
+        if (previousConversationId != null && previousConversationId != conversationId) {
+            realtimeWebSocketManager.unsubscribeConversation(previousConversationId)
+        }
+
         pollingJob?.cancel()
 
         viewModelScope.launch {
@@ -109,6 +136,9 @@ class ChatsViewModel @Inject constructor(
                     activePeerUserId = conversation.peerUserId,
                     messages = emptyList(),
                 )
+
+                realtimeWebSocketManager.connectIfNeeded()
+                realtimeWebSocketManager.subscribeConversation(conversationId)
 
                 refreshActiveConversation(
                     markDelivered = true,
@@ -126,6 +156,11 @@ class ChatsViewModel @Inject constructor(
 
     fun backToConversationList() {
         pollingJob?.cancel()
+
+        _state.value.activeConversationId?.let {
+            realtimeWebSocketManager.unsubscribeConversation(it)
+        }
+
         _state.value = _state.value.copy(
             activeConversationId = null,
             activeConversationTitle = "",
@@ -241,8 +276,38 @@ class ChatsViewModel @Inject constructor(
             repo.logout()
             pollingJob?.cancel()
             heartbeatJob?.cancel()
+            wsPingJob?.cancel()
+            realtimeWebSocketManager.disconnect()
             _state.value = ChatsUiState()
             onLoggedOut()
+        }
+    }
+
+    private fun observeRealtimeEvents() {
+        viewModelScope.launch {
+            realtimeWebSocketManager.events.collect { event ->
+                when (event) {
+                    is RealtimeEvent.ConversationEvent -> {
+                        val activeConversationId = _state.value.activeConversationId
+                        if (activeConversationId == event.conversationId) {
+                            refreshActiveConversation(
+                                markDelivered = true,
+                                markRead = true,
+                            )
+                        } else {
+                            refreshConversations()
+                        }
+                    }
+
+                    is RealtimeEvent.Error -> {
+                        _state.value = _state.value.copy(
+                            info = "Realtime: ${event.message}"
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
         }
     }
 
@@ -256,7 +321,7 @@ class ChatsViewModel @Inject constructor(
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
             while (isActive) {
-                delay(3000)
+                delay(10_000)
                 refreshActiveConversation(
                     markDelivered = true,
                     markRead = true,
@@ -271,6 +336,16 @@ class ChatsViewModel @Inject constructor(
             while (isActive) {
                 repo.heartbeat()
                 delay(45_000)
+            }
+        }
+    }
+
+    private fun startWsPing() {
+        wsPingJob?.cancel()
+        wsPingJob = viewModelScope.launch {
+            while (isActive) {
+                realtimeWebSocketManager.sendPing()
+                delay(25_000)
             }
         }
     }
@@ -329,6 +404,8 @@ class ChatsViewModel @Inject constructor(
     override fun onCleared() {
         pollingJob?.cancel()
         heartbeatJob?.cancel()
+        wsPingJob?.cancel()
+        realtimeWebSocketManager.disconnect()
         super.onCleared()
     }
 }

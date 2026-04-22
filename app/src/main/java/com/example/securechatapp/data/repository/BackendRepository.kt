@@ -23,6 +23,8 @@ class BackendRepository @Inject constructor(
         val peerUserId: Int,
         val peerNickname: String,
         val unreadCount: Int,
+        val lastMessagePreview: String,
+        val updatedAt: String? = null,
     )
 
     data class MessageUi(
@@ -43,7 +45,16 @@ class BackendRepository @Inject constructor(
             val parsed = body?.let {
                 runCatching { json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it) }.getOrNull()
             }
-            throw IllegalStateException(parsed?.error?.message ?: e.message())
+
+            val fallbackMessage = buildString {
+                append(parsed?.error?.message ?: e.message().orEmpty().ifBlank { "HTTP ${e.code()}" })
+                if (!body.isNullOrBlank() && parsed == null) {
+                    append(": ")
+                    append(body)
+                }
+            }
+
+            throw IllegalStateException(fallbackMessage)
         }
     }
 
@@ -57,6 +68,8 @@ class BackendRepository @Inject constructor(
                 peerUserId = it.peer.userId,
                 peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
                 unreadCount = it.unreadCount,
+                lastMessagePreview = buildConversationPreview(it),
+                updatedAt = it.lastMessage?.serverReceivedAt ?: it.updatedAt,
             )
         }
     }
@@ -213,5 +226,20 @@ class BackendRepository @Inject constructor(
             safe { api.revokeCurrentDevice().data }
         }
         sessionStore.clearSession(keepDeviceUuid = true)
+    }
+
+    private fun buildConversationPreview(item: ConversationListItemDto): String {
+        val last = item.lastMessage ?: return "Нет сообщений"
+
+        val isMine = last.senderUserId != item.peer.userId
+
+        val body = when {
+            last.hasAttachments && last.messageType == "file" -> "📎 Вложение"
+            last.hasAttachments -> "📎 Сообщение с вложением"
+            last.messageType == "service" -> "Сервисное сообщение"
+            else -> "Сообщение"
+        }
+
+        return if (isMine) "Вы: $body" else body
     }
 }

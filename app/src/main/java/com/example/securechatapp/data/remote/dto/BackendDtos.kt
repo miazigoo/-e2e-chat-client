@@ -224,6 +224,10 @@ data class ConversationListItemDto(
     val peer: ConversationPeerDto,
     @SerialName("unread_count")
     val unreadCount: Int,
+    @SerialName("updated_at")
+    val updatedAt: String? = null,
+    @SerialName("last_message")
+    val lastMessage: ConversationLastMessageDto? = null,
 )
 
 @Serializable
@@ -495,4 +499,24 @@ data class CompleteUploadSessionResponseDto(
     val filesUploadedCount: Int,
     @SerialName("completed_at")
     val completedAt: String,
+)
+
+@Serializable
+data class ConversationLastMessageDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    @SerialName("message_uuid")
+    val messageUuid: String,
+    @SerialName("sender_user_id")
+    val senderUserId: Int,
+    @SerialName("recipient_user_id")
+    val recipientUserId: Int,
+    @SerialName("message_type")
+    val messageType: String,
+    @SerialName("client_created_at")
+    val clientCreatedAt: String,
+    @SerialName("server_received_at")
+    val serverReceivedAt: String,
+    @SerialName("has_attachments")
+    val hasAttachments: Boolean = false,
 )

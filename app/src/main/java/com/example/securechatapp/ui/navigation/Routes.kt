@@ -6,4 +6,9 @@ object Routes {
     const val Register = "register"
     const val VerifyEmailCode = "verify_email_code"
     const val Chats = "chats"
+
+    const val ConversationArg = "conversationId"
+    const val ConversationPattern = "conversation/{$ConversationArg}"
+
+    fun conversationRoute(conversationId: Int): String = "conversation/$conversationId"
 }
