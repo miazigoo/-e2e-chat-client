@@ -1,0 +1,217 @@
+package com.example.securechatapp.data.repository
+
+import com.example.securechatapp.core.crypto.DevCryptoEngine
+import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.remote.api.ChatBackendApi
+import com.example.securechatapp.data.remote.dto.*
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.serialization.json.Json
+import retrofit2.HttpException
+
+@Singleton
+class BackendRepository @Inject constructor(
+    private val api: ChatBackendApi,
+    private val sessionStore: SessionLocalDataSource,
+    private val crypto: DevCryptoEngine,
+    private val json: Json,
+) {
+    data class ConversationUi(
+        val conversationId: Int,
+        val title: String,
+        val peerUserId: Int,
+        val peerNickname: String,
+        val unreadCount: Int,
+    )
+
+    data class MessageUi(
+        val messageId: Int,
+        val text: String,
+        val isMine: Boolean,
+        val createdAt: String,
+        val deliveredAt: String? = null,
+        val readAt: String? = null,
+        val hasAttachments: Boolean = false,
+    )
+
+    private suspend fun <T> safe(block: suspend () -> T): T {
+        try {
+            return block()
+        } catch (e: HttpException) {
+            val body = e.response()?.errorBody()?.string()
+            val parsed = body?.let {
+                runCatching { json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it) }.getOrNull()
+            }
+            throw IllegalStateException(parsed?.error?.message ?: e.message())
+        }
+    }
+
+    suspend fun ensureDeviceUuid(): String = sessionStore.getOrCreateDeviceUuid()
+
+    suspend fun listConversations(): List<ConversationUi> {
+        return safe { api.listConversations().data }.items.map {
+            ConversationUi(
+                conversationId = it.conversationId,
+                title = it.title ?: (it.peer.nickname ?: "User ${it.peer.userId}"),
+                peerUserId = it.peer.userId,
+                peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
+                unreadCount = it.unreadCount,
+            )
+        }
+    }
+
+    suspend fun searchUsers(query: String): List<UserSearchItemDto> {
+        return safe { api.searchUsers(query.trim()).data }.items
+    }
+
+    suspend fun createConversation(userId: Int): Int {
+        return safe {
+            api.createConversation(
+                CreateConversationRequestDto(recipientUserId = userId)
+            ).data
+        }.conversationId
+    }
+
+    suspend fun getConversation(conversationId: Int): GetConversationResponseDto {
+        return safe { api.getConversation(conversationId).data }
+    }
+
+    suspend fun listMessages(
+        conversationId: Int,
+        peerUserId: Int,
+    ): List<MessageUi> {
+        return safe { api.listMessages(conversationId = conversationId).data }
+            .items
+            .sortedBy { it.messageId }
+            .map {
+                MessageUi(
+                    messageId = it.messageId,
+                    text = crypto.decryptToPlainText(it.ciphertext),
+                    isMine = it.senderUserId != peerUserId,
+                    createdAt = it.serverReceivedAt,
+                    deliveredAt = it.deliveredAt,
+                    readAt = it.readAt,
+                    hasAttachments = it.hasAttachments,
+                )
+            }
+    }
+
+    suspend fun markIncomingMessagesAsDelivered(
+        messages: List<MessageUi>,
+    ): Int {
+        val undeliveredIncoming = messages
+            .filter { !it.isMine && it.deliveredAt == null }
+            .distinctBy { it.messageId }
+
+        undeliveredIncoming.forEach { message ->
+            safe {
+                api.markDelivered(
+                    messageId = message.messageId,
+                    body = MarkDeliveredRequestDto(deliveredAt = crypto.nowIso()),
+                )
+            }
+        }
+
+        return undeliveredIncoming.size
+    }
+
+    suspend fun markIncomingMessagesAsRead(
+        messages: List<MessageUi>,
+    ): Int {
+        val unreadIncoming = messages
+            .filter { !it.isMine && it.readAt == null }
+            .distinctBy { it.messageId }
+
+        unreadIncoming.forEach { message ->
+            safe {
+                api.markRead(
+                    messageId = message.messageId,
+                    body = MarkReadRequestDto(readAt = crypto.nowIso()),
+                )
+            }
+        }
+
+        return unreadIncoming.size
+    }
+
+    suspend fun sendMessage(
+        conversationId: Int,
+        recipientUserId: Int,
+        plainText: String,
+        attachmentIds: List<Int> = emptyList(),
+    ) {
+        val finalText = when {
+            plainText.isNotBlank() -> plainText
+            attachmentIds.isNotEmpty() -> "[attachment]"
+            else -> error("Нельзя отправить пустое сообщение")
+        }
+
+        val encrypted = crypto.encryptPlainText(finalText)
+
+        safe {
+            api.sendMessage(
+                SendMessageRequestDto(
+                    conversationId = conversationId,
+                    recipientUserId = recipientUserId,
+                    messageUuid = UUID.randomUUID().toString(),
+                    ciphertext = encrypted.ciphertext,
+                    nonce = encrypted.nonce,
+                    clientCreatedAt = crypto.nowIso(),
+                    attachmentIds = attachmentIds.distinct(),
+                )
+            )
+        }
+    }
+
+    suspend fun deleteMessagesLocal(
+        conversationId: Int,
+        messageIds: List<Int>,
+    ): DeleteMessagesResponseDto {
+        return safe {
+            api.deleteLocalMessages(
+                DeleteMessagesRequestDto(
+                    conversationId = conversationId,
+                    messageIds = messageIds.distinct(),
+                )
+            ).data
+        }
+    }
+
+    suspend fun deleteMessagesGlobal(
+        conversationId: Int,
+        messageIds: List<Int>,
+    ): DeleteMessagesResponseDto {
+        return safe {
+            api.deleteGlobalMessages(
+                DeleteMessagesRequestDto(
+                    conversationId = conversationId,
+                    messageIds = messageIds.distinct(),
+                )
+            ).data
+        }
+    }
+
+    suspend fun heartbeat() {
+        runCatching {
+            safe { api.sendHeartbeat().data }
+        }
+    }
+
+    suspend fun updateFcmToken(token: String?) {
+        runCatching {
+            safe {
+                api.updateFcmToken(
+                    UpdateFcmTokenRequestDto(fcmToken = token)
+                ).data
+            }
+        }
+    }
+
+    suspend fun logout() {
+        runCatching {
+            safe { api.revokeCurrentDevice().data }
+        }
+        sessionStore.clearSession(keepDeviceUuid = true)
+    }
+}

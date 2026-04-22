@@ -1,0 +1,77 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Python compiled byte code
+*.pyc
+**/__pycache__
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.idea
+
+# Staticfiles
+public/
+media/
+
+# Virtualenv
+cms-venv/
+obj/
+
+node_modules
+
+# Coverage
+.coverage
+coverage_html/
+
+*.log
+
+pgdump_cms
+
+
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+devandprod_backend/.env
+pgdump_cms/*
+.kotlin
+
+
+
+
