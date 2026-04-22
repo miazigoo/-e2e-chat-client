@@ -45,6 +45,13 @@ class BackendRepository @Inject constructor(
         val canDownload: Boolean = true,
     )
 
+    data class AttachmentDownloadInfo(
+        val attachmentId: Int,
+        val downloadUrl: String,
+        val fileName: String,
+        val mimeType: String?,
+    )
+
     private suspend fun <T> safe(block: suspend () -> T): T {
         try {
             return block()
@@ -272,11 +279,27 @@ class BackendRepository @Inject constructor(
             }
     }
 
-    suspend fun getAttachmentDownloadUrl(
+    suspend fun getAttachmentDownloadInfo(
         attachmentId: Int,
-    ): String? {
+    ): AttachmentDownloadInfo? {
         val data = safe { api.getAttachmentMetadata(attachmentId).data }
-        return if (data.canDownload) data.downloadUrl else null
+
+        val url = data.downloadUrl
+        if (!data.canDownload || url.isNullOrBlank()) return null
+
+        val fileName = data.encryptedFileName
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackAttachmentName(
+                attachmentId = data.attachmentId,
+                mimeType = data.mimeHint,
+            )
+
+        return AttachmentDownloadInfo(
+            attachmentId = data.attachmentId,
+            downloadUrl = url,
+            fileName = fileName,
+            mimeType = data.mimeHint,
+        )
     }
 
     private fun fallbackAttachmentName(

@@ -3,6 +3,7 @@ package com.example.securechatapp.ui.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.data.files.AttachmentDownloadManager
 import com.example.securechatapp.data.files.AttachmentUploadManager
 import com.example.securechatapp.data.remote.dto.UserSearchItemDto
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
@@ -34,13 +35,14 @@ data class ChatsUiState(
     val attachmentSheetMessageId: Int? = null,
     val selectedMessageAttachments: List<BackendRepository.AttachmentUi> = emptyList(),
     val isLoadingAttachments: Boolean = false,
-    val openingAttachmentId: Int? = null,
+    val downloadingAttachmentId: Int? = null,
 )
 
 @HiltViewModel
 class ChatsViewModel @Inject constructor(
     private val repo: BackendRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
+    private val attachmentDownloadManager: AttachmentDownloadManager,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
 ) : ViewModel() {
 
@@ -419,7 +421,7 @@ class ChatsViewModel @Inject constructor(
                 attachmentSheetMessageId = messageId,
                 selectedMessageAttachments = emptyList(),
                 isLoadingAttachments = true,
-                openingAttachmentId = null,
+                downloadingAttachmentId = null,
                 error = null,
             )
 
@@ -446,37 +448,49 @@ class ChatsViewModel @Inject constructor(
             attachmentSheetMessageId = null,
             selectedMessageAttachments = emptyList(),
             isLoadingAttachments = false,
-            openingAttachmentId = null,
+            downloadingAttachmentId = null,
         )
     }
 
-    fun openAttachment(
-        attachmentId: Int,
-        onOpenUrl: (String) -> Unit,
-    ) {
+    fun downloadAttachment(attachmentId: Int) {
         viewModelScope.launch {
             _state.value = _state.value.copy(
-                openingAttachmentId = attachmentId,
+                downloadingAttachmentId = attachmentId,
                 error = null,
+                info = null,
             )
 
             runCatching {
-                repo.getAttachmentDownloadUrl(attachmentId)
-            }.onSuccess { url ->
-                _state.value = _state.value.copy(
-                    openingAttachmentId = null,
-                )
-
-                if (url.isNullOrBlank()) {
+                repo.getAttachmentDownloadInfo(attachmentId)
+            }.onSuccess { downloadInfo ->
+                if (downloadInfo == null) {
                     _state.value = _state.value.copy(
-                        error = "Не удалось получить ссылку на файл",
+                        downloadingAttachmentId = null,
+                        error = "Не удалось получить данные для скачивания",
                     )
-                } else {
-                    onOpenUrl(url)
+                    return@onSuccess
+                }
+
+                runCatching {
+                    attachmentDownloadManager.enqueueDownload(
+                        url = downloadInfo.downloadUrl,
+                        fileName = downloadInfo.fileName,
+                        mimeType = downloadInfo.mimeType,
+                    )
+                }.onSuccess {
+                    _state.value = _state.value.copy(
+                        downloadingAttachmentId = null,
+                        info = "Скачивание начато",
+                    )
+                }.onFailure {
+                    _state.value = _state.value.copy(
+                        downloadingAttachmentId = null,
+                        error = it.message ?: "Не удалось начать скачивание",
+                    )
                 }
             }.onFailure {
                 _state.value = _state.value.copy(
-                    openingAttachmentId = null,
+                    downloadingAttachmentId = null,
                     error = it.message,
                 )
             }

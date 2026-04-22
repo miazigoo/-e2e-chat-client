@@ -22,7 +22,7 @@ import java.util.Locale
 fun MessageAttachmentsDialog(
     attachments: List<BackendRepository.AttachmentUi>,
     isLoading: Boolean,
-    openingAttachmentId: Int?,
+    downloadingAttachmentId: Int?,
     onDismiss: () -> Unit,
     onAttachmentClick: (Int) -> Unit,
 ) {
@@ -54,7 +54,7 @@ fun MessageAttachmentsDialog(
                         attachments.forEach { attachment ->
                             AttachmentRow(
                                 attachment = attachment,
-                                isOpening = openingAttachmentId == attachment.attachmentId,
+                                isDownloading = downloadingAttachmentId == attachment.attachmentId,
                                 onClick = {
                                     if (attachment.canDownload) {
                                         onAttachmentClick(attachment.attachmentId)
@@ -77,13 +77,13 @@ fun MessageAttachmentsDialog(
 @Composable
 private fun AttachmentRow(
     attachment: BackendRepository.AttachmentUi,
-    isOpening: Boolean,
+    isDownloading: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = attachment.canDownload, onClick = onClick),
+            .clickable(enabled = attachment.canDownload && !isDownloading, onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
     ) {
@@ -110,7 +110,7 @@ private fun AttachmentRow(
                         mimeType = attachment.mimeType,
                         fileSize = attachment.fileSize,
                         canDownload = attachment.canDownload,
-                        isOpening = isOpening,
+                        isDownloading = isDownloading,
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
@@ -124,10 +124,10 @@ private fun buildAttachmentSubtitle(
     mimeType: String?,
     fileSize: Long,
     canDownload: Boolean,
-    isOpening: Boolean,
+    isDownloading: Boolean,
 ): String {
     if (!canDownload) return "Файл недоступен"
-    if (isOpening) return "Открываем..."
+    if (isDownloading) return "Скачиваем..."
 
     val parts = mutableListOf<String>()
 

@@ -24,7 +24,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
@@ -37,7 +36,6 @@ fun ConversationScreen(
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    val uriHandler = LocalUriHandler.current
 
     var message by remember { mutableStateOf("") }
     var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
@@ -204,12 +202,10 @@ fun ConversationScreen(
             MessageAttachmentsDialog(
                 attachments = state.selectedMessageAttachments,
                 isLoading = state.isLoadingAttachments,
-                openingAttachmentId = state.openingAttachmentId,
+                downloadingAttachmentId = state.downloadingAttachmentId,
                 onDismiss = viewModel::dismissMessageAttachments,
                 onAttachmentClick = { attachmentId ->
-                    viewModel.openAttachment(attachmentId) { url ->
-                        uriHandler.openUri(url)
-                    }
+                    viewModel.downloadAttachment(attachmentId)
                 }
             )
         }
