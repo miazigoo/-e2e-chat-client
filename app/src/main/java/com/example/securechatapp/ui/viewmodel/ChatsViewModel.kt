@@ -36,6 +36,10 @@ data class ChatsUiState(
     val selectedMessageAttachments: List<BackendRepository.AttachmentUi> = emptyList(),
     val isLoadingAttachments: Boolean = false,
     val downloadingAttachmentId: Int? = null,
+    val imagePreviewAttachmentId: Int? = null,
+    val imagePreviewUrl: String? = null,
+    val imagePreviewFileName: String? = null,
+    val isLoadingImagePreview: Boolean = false,
 )
 
 @HiltViewModel
@@ -174,6 +178,10 @@ class ChatsViewModel @Inject constructor(
             messages = emptyList(),
             error = null,
             info = null,
+            imagePreviewAttachmentId = null,
+            imagePreviewUrl = null,
+            imagePreviewFileName = null,
+            isLoadingImagePreview = false,
         )
         refreshConversations()
     }
@@ -422,6 +430,10 @@ class ChatsViewModel @Inject constructor(
                 selectedMessageAttachments = emptyList(),
                 isLoadingAttachments = true,
                 downloadingAttachmentId = null,
+                imagePreviewAttachmentId = null,
+                imagePreviewUrl = null,
+                imagePreviewFileName = null,
+                isLoadingImagePreview = false,
                 error = null,
             )
 
@@ -450,6 +462,79 @@ class ChatsViewModel @Inject constructor(
             isLoadingAttachments = false,
             downloadingAttachmentId = null,
         )
+    }
+
+    fun onAttachmentSelected(
+        attachment: BackendRepository.AttachmentUi,
+    ) {
+        if (attachment.isImage) {
+            previewImageAttachment(attachment)
+        } else {
+            downloadAttachment(attachment.attachmentId)
+        }
+    }
+
+    private fun previewImageAttachment(
+        attachment: BackendRepository.AttachmentUi,
+    ) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                attachmentSheetMessageId = null,
+                selectedMessageAttachments = emptyList(),
+                isLoadingAttachments = false,
+                downloadingAttachmentId = null,
+                imagePreviewAttachmentId = attachment.attachmentId,
+                imagePreviewUrl = null,
+                imagePreviewFileName = attachment.fileName,
+                isLoadingImagePreview = true,
+                error = null,
+                info = null,
+            )
+
+            runCatching {
+                repo.getAttachmentDownloadInfo(attachment.attachmentId)
+            }.onSuccess { previewInfo ->
+                if (previewInfo == null) {
+                    _state.value = _state.value.copy(
+                        imagePreviewAttachmentId = null,
+                        imagePreviewUrl = null,
+                        imagePreviewFileName = null,
+                        isLoadingImagePreview = false,
+                        error = "Не удалось получить превью изображения",
+                    )
+                    return@onSuccess
+                }
+
+                _state.value = _state.value.copy(
+                    imagePreviewAttachmentId = previewInfo.attachmentId,
+                    imagePreviewUrl = previewInfo.downloadUrl,
+                    imagePreviewFileName = previewInfo.fileName,
+                    isLoadingImagePreview = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    imagePreviewAttachmentId = null,
+                    imagePreviewUrl = null,
+                    imagePreviewFileName = null,
+                    isLoadingImagePreview = false,
+                    error = it.message,
+                )
+            }
+        }
+    }
+
+    fun dismissImagePreview() {
+        _state.value = _state.value.copy(
+            imagePreviewAttachmentId = null,
+            imagePreviewUrl = null,
+            imagePreviewFileName = null,
+            isLoadingImagePreview = false,
+        )
+    }
+
+    fun downloadCurrentPreview() {
+        val attachmentId = _state.value.imagePreviewAttachmentId ?: return
+        downloadAttachment(attachmentId)
     }
 
     fun downloadAttachment(attachmentId: Int) {
@@ -496,5 +581,4 @@ class ChatsViewModel @Inject constructor(
             }
         }
     }
-
 }

@@ -24,7 +24,7 @@ fun MessageAttachmentsDialog(
     isLoading: Boolean,
     downloadingAttachmentId: Int?,
     onDismiss: () -> Unit,
-    onAttachmentClick: (Int) -> Unit,
+    onAttachmentClick: (BackendRepository.AttachmentUi) -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -57,7 +57,7 @@ fun MessageAttachmentsDialog(
                                 isDownloading = downloadingAttachmentId == attachment.attachmentId,
                                 onClick = {
                                     if (attachment.canDownload) {
-                                        onAttachmentClick(attachment.attachmentId)
+                                        onAttachmentClick(attachment)
                                     }
                                 }
                             )
@@ -93,7 +93,7 @@ private fun AttachmentRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             Text(
-                text = "📎",
+                text = attachmentIcon(attachment),
                 modifier = Modifier.padding(end = 10.dp),
             )
 
@@ -107,9 +107,7 @@ private fun AttachmentRow(
 
                 Text(
                     text = buildAttachmentSubtitle(
-                        mimeType = attachment.mimeType,
-                        fileSize = attachment.fileSize,
-                        canDownload = attachment.canDownload,
+                        attachment = attachment,
                         isDownloading = isDownloading,
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -121,20 +119,35 @@ private fun AttachmentRow(
 }
 
 private fun buildAttachmentSubtitle(
-    mimeType: String?,
-    fileSize: Long,
-    canDownload: Boolean,
+    attachment: BackendRepository.AttachmentUi,
     isDownloading: Boolean,
 ): String {
-    if (!canDownload) return "Файл недоступен"
+    if (!attachment.canDownload) return "Файл недоступен"
     if (isDownloading) return "Скачиваем..."
 
     val parts = mutableListOf<String>()
 
-    mimeType?.takeIf { it.isNotBlank() }?.let { parts += it }
-    parts += formatFileSize(fileSize)
+    when {
+        attachment.isImage -> parts += "изображение"
+        attachment.mimeType?.startsWith("video/") == true -> parts += "видео"
+        attachment.mimeType?.startsWith("audio/") == true -> parts += "аудио"
+        attachment.mimeType?.isNotBlank() == true -> parts += attachment.mimeType
+    }
+
+    parts += formatFileSize(attachment.fileSize)
 
     return parts.joinToString(" • ")
+}
+
+private fun attachmentIcon(
+    attachment: BackendRepository.AttachmentUi,
+): String {
+    return when {
+        attachment.isImage -> "🖼"
+        attachment.mimeType?.startsWith("video/") == true -> "🎬"
+        attachment.mimeType?.startsWith("audio/") == true -> "🎵"
+        else -> "📎"
+    }
 }
 
 private fun formatFileSize(bytes: Long): String {

@@ -48,24 +48,31 @@ class AttachmentDownloadManager @Inject constructor(
         fileName: String,
         mimeType: String?,
     ): String {
-        val sanitizedBase = sanitizeFileName(fileName)
+        val sanitized = sanitizeFileName(fileName)
             .ifBlank { "attachment_${System.currentTimeMillis()}" }
 
-        val hasExtension = sanitizedBase.substringAfterLast('.', "")
-            .isNotBlank()
+        val originalExtension = sanitized
+            .substringAfterLast('.', "")
+            .takeIf { it.isNotBlank() }
 
-        val extension = if (hasExtension) {
-            ""
+        val baseName = if (originalExtension != null) {
+            sanitized.substringBeforeLast('.', sanitized)
         } else {
-            mimeType
-                ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
-                ?.takeIf { it.isNotBlank() }
-                ?.let { ".$it" }
-                ?: ""
+            sanitized
         }
 
+        val resolvedExtension = originalExtension
+            ?: mimeType
+                ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                ?.takeIf { it.isNotBlank() }
+
         val timestamp = System.currentTimeMillis()
-        return "${sanitizedBase.substringBeforeLast('.', sanitizedBase)}_$timestamp$extension"
+
+        return if (resolvedExtension.isNullOrBlank()) {
+            "${baseName}_$timestamp"
+        } else {
+            "${baseName}_$timestamp.$resolvedExtension"
+        }
     }
 
     private fun sanitizeFileName(value: String): String {

@@ -4,16 +4,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -204,9 +202,20 @@ fun ConversationScreen(
                 isLoading = state.isLoadingAttachments,
                 downloadingAttachmentId = state.downloadingAttachmentId,
                 onDismiss = viewModel::dismissMessageAttachments,
-                onAttachmentClick = { attachmentId ->
-                    viewModel.downloadAttachment(attachmentId)
+                onAttachmentClick = { attachment ->
+                    viewModel.onAttachmentSelected(attachment)
                 }
+            )
+        }
+
+        if (state.isLoadingImagePreview || state.imagePreviewUrl != null) {
+            ImagePreviewDialog(
+                fileName = state.imagePreviewFileName ?: "Изображение",
+                imageUrl = state.imagePreviewUrl,
+                isLoading = state.isLoadingImagePreview,
+                isDownloading = state.downloadingAttachmentId == state.imagePreviewAttachmentId,
+                onDismiss = viewModel::dismissImagePreview,
+                onDownload = viewModel::downloadCurrentPreview,
             )
         }
     }

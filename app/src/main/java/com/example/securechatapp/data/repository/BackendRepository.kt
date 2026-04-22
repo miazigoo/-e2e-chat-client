@@ -43,7 +43,10 @@ class BackendRepository @Inject constructor(
         val mimeType: String?,
         val fileSize: Long,
         val canDownload: Boolean = true,
-    )
+    ) {
+        val isImage: Boolean
+            get() = mimeType?.startsWith("image/") == true
+    }
 
     data class AttachmentDownloadInfo(
         val attachmentId: Int,
