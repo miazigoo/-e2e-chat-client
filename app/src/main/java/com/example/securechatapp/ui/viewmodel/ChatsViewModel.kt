@@ -31,6 +31,10 @@ data class ChatsUiState(
     val activeConversationTitle: String = "",
     val activePeerUserId: Int? = null,
     val messages: List<BackendRepository.MessageUi> = emptyList(),
+    val attachmentSheetMessageId: Int? = null,
+    val selectedMessageAttachments: List<BackendRepository.AttachmentUi> = emptyList(),
+    val isLoadingAttachments: Boolean = false,
+    val openingAttachmentId: Int? = null,
 )
 
 @HiltViewModel
@@ -408,4 +412,75 @@ class ChatsViewModel @Inject constructor(
         realtimeWebSocketManager.disconnect()
         super.onCleared()
     }
+
+    fun showMessageAttachments(messageId: Int) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                attachmentSheetMessageId = messageId,
+                selectedMessageAttachments = emptyList(),
+                isLoadingAttachments = true,
+                openingAttachmentId = null,
+                error = null,
+            )
+
+            runCatching {
+                repo.listMessageAttachments(messageId)
+            }.onSuccess { attachments ->
+                _state.value = _state.value.copy(
+                    selectedMessageAttachments = attachments,
+                    isLoadingAttachments = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    attachmentSheetMessageId = null,
+                    selectedMessageAttachments = emptyList(),
+                    isLoadingAttachments = false,
+                    error = it.message,
+                )
+            }
+        }
+    }
+
+    fun dismissMessageAttachments() {
+        _state.value = _state.value.copy(
+            attachmentSheetMessageId = null,
+            selectedMessageAttachments = emptyList(),
+            isLoadingAttachments = false,
+            openingAttachmentId = null,
+        )
+    }
+
+    fun openAttachment(
+        attachmentId: Int,
+        onOpenUrl: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                openingAttachmentId = attachmentId,
+                error = null,
+            )
+
+            runCatching {
+                repo.getAttachmentDownloadUrl(attachmentId)
+            }.onSuccess { url ->
+                _state.value = _state.value.copy(
+                    openingAttachmentId = null,
+                )
+
+                if (url.isNullOrBlank()) {
+                    _state.value = _state.value.copy(
+                        error = "Не удалось получить ссылку на файл",
+                    )
+                } else {
+                    onOpenUrl(url)
+                }
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    openingAttachmentId = null,
+                    error = it.message,
+                )
+            }
+        }
+    }
+
 }

@@ -20,6 +20,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ fun MessageBubble(
     isDeleting: Boolean,
     onDeleteLocal: () -> Unit,
     onDeleteGlobal: () -> Unit,
+    onAttachmentsClick: () -> Unit,
 ) {
     val dark = isSystemInDarkTheme()
     val bubbleColor = when {
@@ -61,6 +63,12 @@ fun MessageBubble(
         MessageGroupPosition.END -> 8.dp
         MessageGroupPosition.START,
         MessageGroupPosition.MIDDLE -> 2.dp
+    }
+
+    val bodyText = if (msg.hasAttachments && msg.text == "[attachment]") {
+        "Вложение"
+    } else {
+        msg.text
     }
 
     Row(
@@ -92,16 +100,22 @@ fun MessageBubble(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     if (msg.hasAttachments) {
-                        Text(
-                            text = "📎 attachment",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(
+                            onClick = onAttachmentsClick,
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = "📎 Открыть вложения",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
                     }
 
                     Text(
-                        text = msg.text,
+                        text = bodyText,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )

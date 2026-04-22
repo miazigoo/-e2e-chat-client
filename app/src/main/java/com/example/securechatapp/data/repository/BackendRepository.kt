@@ -37,6 +37,14 @@ class BackendRepository @Inject constructor(
         val hasAttachments: Boolean = false,
     )
 
+    data class AttachmentUi(
+        val attachmentId: Int,
+        val fileName: String,
+        val mimeType: String?,
+        val fileSize: Long,
+        val canDownload: Boolean = true,
+    )
+
     private suspend fun <T> safe(block: suspend () -> T): T {
         try {
             return block()
@@ -241,5 +249,45 @@ class BackendRepository @Inject constructor(
         }
 
         return if (isMine) "Вы: $body" else body
+    }
+
+    suspend fun listMessageAttachments(
+        messageId: Int,
+    ): List<AttachmentUi> {
+        return safe { api.listMessageAttachments(messageId).data }
+            .items
+            .map { item ->
+                AttachmentUi(
+                    attachmentId = item.attachmentId,
+                    fileName = item.encryptedFileName
+                        ?.takeIf { it.isNotBlank() }
+                        ?: fallbackAttachmentName(
+                            attachmentId = item.attachmentId,
+                            mimeType = item.mimeHint,
+                        ),
+                    mimeType = item.mimeHint,
+                    fileSize = item.fileSize,
+                    canDownload = item.deletedAt == null,
+                )
+            }
+    }
+
+    suspend fun getAttachmentDownloadUrl(
+        attachmentId: Int,
+    ): String? {
+        val data = safe { api.getAttachmentMetadata(attachmentId).data }
+        return if (data.canDownload) data.downloadUrl else null
+    }
+
+    private fun fallbackAttachmentName(
+        attachmentId: Int,
+        mimeType: String?,
+    ): String {
+        return when {
+            mimeType?.startsWith("image/") == true -> "image_$attachmentId"
+            mimeType?.startsWith("video/") == true -> "video_$attachmentId"
+            mimeType?.startsWith("audio/") == true -> "audio_$attachmentId"
+            else -> "attachment_$attachmentId"
+        }
     }
 }

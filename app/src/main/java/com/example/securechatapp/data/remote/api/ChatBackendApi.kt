@@ -35,6 +35,8 @@ import com.example.securechatapp.data.remote.dto.UpdateFcmTokenResponseDto
 import com.example.securechatapp.data.remote.dto.UserSearchResponseDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeRequestDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeResponseDto
+import com.example.securechatapp.data.remote.dto.GetAttachmentResponseDto
+import com.example.securechatapp.data.remote.dto.ListMessageAttachmentsResponseDto
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -149,4 +151,15 @@ interface ChatBackendApi {
 
     @DELETE("devices/current")
     suspend fun revokeCurrentDevice(): ApiEnvelopeDto<RevokeCurrentDeviceResponseDto>
+
+    @GET("files/messages/{messageId}/attachments")
+    suspend fun listMessageAttachments(
+        @Path("messageId") messageId: Int,
+    ): ApiEnvelopeDto<ListMessageAttachmentsResponseDto>
+
+    @GET("files/attachments/{attachmentId}")
+    suspend fun getAttachmentMetadata(
+        @Path("attachmentId") attachmentId: Int,
+    ): ApiEnvelopeDto<GetAttachmentResponseDto>
+
 }

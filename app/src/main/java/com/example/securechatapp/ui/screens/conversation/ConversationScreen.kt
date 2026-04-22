@@ -24,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
@@ -36,6 +37,7 @@ fun ConversationScreen(
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val uriHandler = LocalUriHandler.current
 
     var message by remember { mutableStateOf("") }
     var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
@@ -132,6 +134,9 @@ fun ConversationScreen(
                                 isDeleting = state.deletingMessageIds.contains(row.message.messageId),
                                 onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },
                                 onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
+                                onAttachmentsClick = {
+                                    viewModel.showMessageAttachments(row.message.messageId)
+                                }
                             )
                         }
                     }
@@ -192,6 +197,20 @@ fun ConversationScreen(
                 },
                 isUploading = state.isUploadingAttachment,
                 sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
+            )
+        }
+
+        if (state.attachmentSheetMessageId != null) {
+            MessageAttachmentsDialog(
+                attachments = state.selectedMessageAttachments,
+                isLoading = state.isLoadingAttachments,
+                openingAttachmentId = state.openingAttachmentId,
+                onDismiss = viewModel::dismissMessageAttachments,
+                onAttachmentClick = { attachmentId ->
+                    viewModel.openAttachment(attachmentId) { url ->
+                        uriHandler.openUri(url)
+                    }
+                }
             )
         }
     }

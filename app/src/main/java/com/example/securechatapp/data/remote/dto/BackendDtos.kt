@@ -520,3 +520,80 @@ data class ConversationLastMessageDto(
     @SerialName("has_attachments")
     val hasAttachments: Boolean = false,
 )
+@Serializable
+data class AttachmentMetadataItemDto(
+    @SerialName("attachment_id")
+    val attachmentId: Int,
+    @SerialName("attachment_uuid")
+    val attachmentUuid: String,
+    @SerialName("message_id")
+    val messageId: Int? = null,
+    @SerialName("encrypted_file_name")
+    val encryptedFileName: String? = null,
+    @SerialName("encrypted_metadata")
+    val encryptedMetadata: Map<String, String>? = null,
+    @SerialName("file_size")
+    val fileSize: Long,
+    @SerialName("mime_hint")
+    val mimeHint: String? = null,
+    @SerialName("sha256_encrypted_blob")
+    val sha256EncryptedBlob: String,
+    @SerialName("bucket_name")
+    val bucketName: String,
+    @SerialName("storage_key")
+    val storageKey: String,
+    @SerialName("upload_status")
+    val uploadStatus: String,
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("expires_at")
+    val expiresAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+)
+
+@Serializable
+data class ListMessageAttachmentsResponseDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    val items: List<AttachmentMetadataItemDto> = emptyList(),
+)
+
+@Serializable
+data class GetAttachmentResponseDto(
+    @SerialName("attachment_id")
+    val attachmentId: Int,
+    @SerialName("attachment_uuid")
+    val attachmentUuid: String,
+    @SerialName("message_id")
+    val messageId: Int? = null,
+    @SerialName("encrypted_file_name")
+    val encryptedFileName: String? = null,
+    @SerialName("encrypted_metadata")
+    val encryptedMetadata: Map<String, String>? = null,
+    @SerialName("file_size")
+    val fileSize: Long,
+    @SerialName("mime_hint")
+    val mimeHint: String? = null,
+    @SerialName("sha256_encrypted_blob")
+    val sha256EncryptedBlob: String,
+    @SerialName("bucket_name")
+    val bucketName: String,
+    @SerialName("storage_key")
+    val storageKey: String,
+    @SerialName("upload_status")
+    val uploadStatus: String,
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("expires_at")
+    val expiresAt: String? = null,
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+    @SerialName("can_download")
+    val canDownload: Boolean = true,
+    @SerialName("download_url")
+    val downloadUrl: String? = null,
+    @SerialName("download_url_expires_in")
+    val downloadUrlExpiresIn: Int? = null,
+)
+
