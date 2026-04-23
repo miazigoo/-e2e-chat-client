@@ -26,15 +26,16 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/v1/\"")
             isMinifyEnabled = false
         }
         release {
+            buildConfigField("String", "API_BASE_URL", "\"https://your-domain.com/api/v1/\"")
             isMinifyEnabled = true
             isShrinkResources = true
-            buildConfigField("boolean", "ENABLE_HTTP_LOGGING", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
+                "proguard-rules.pro"
             )
         }
     }
