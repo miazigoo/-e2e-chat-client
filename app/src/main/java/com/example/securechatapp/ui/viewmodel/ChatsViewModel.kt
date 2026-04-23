@@ -2,6 +2,9 @@ package com.example.securechatapp.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.core.common.ConversationsRefreshBus
+import com.example.securechatapp.data.remote.websocket.RealtimeEvent
+import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.domain.model.ConversationListItem
@@ -26,12 +29,17 @@ data class ChatsUiState(
 class ChatsViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val sessionRepository: SessionRepository,
+    private val realtimeWebSocketManager: RealtimeWebSocketManager,
+    private val conversationsRefreshBus: ConversationsRefreshBus,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatsUiState())
     val state: StateFlow<ChatsUiState> = _state.asStateFlow()
 
     init {
+        observeRefreshBus()
+        observeRealtimeEvents()
+        connectRealtime()
         refreshConversations()
     }
 
@@ -119,10 +127,49 @@ class ChatsViewModel @Inject constructor(
                 error = null,
             )
 
+            realtimeWebSocketManager.disconnect()
             sessionRepository.logoutSession()
 
             _state.value = ChatsUiState()
             onLoggedOut()
+        }
+    }
+
+    private fun connectRealtime() {
+        viewModelScope.launch {
+            realtimeWebSocketManager.connectIfNeeded()
+        }
+    }
+
+    private fun observeRefreshBus() {
+        viewModelScope.launch {
+            conversationsRefreshBus.events.collect {
+                refreshConversations()
+            }
+        }
+    }
+
+    private fun observeRealtimeEvents() {
+        viewModelScope.launch {
+            realtimeWebSocketManager.events.collect { event ->
+                when (event) {
+                    is RealtimeEvent.Connected -> {
+                        refreshConversations()
+                    }
+
+                    is RealtimeEvent.ConversationEvent -> {
+                        refreshConversations()
+                    }
+
+                    is RealtimeEvent.Error -> {
+                        _state.value = _state.value.copy(
+                            info = "Realtime: ${event.message}"
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
         }
     }
 }

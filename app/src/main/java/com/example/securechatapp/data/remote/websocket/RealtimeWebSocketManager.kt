@@ -6,10 +6,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -44,6 +47,8 @@ class RealtimeWebSocketManager @Inject constructor(
 
     private var webSocket: WebSocket? = null
     private var isConnected: Boolean = false
+    private var keepAliveJob: Job? = null
+
     private val subscribedConversationIds = linkedSetOf<Int>()
 
     private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 64)
@@ -67,6 +72,8 @@ class RealtimeWebSocketManager @Inject constructor(
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
                     isConnected = true
+                    startKeepAlive()
+
                     scope.launch {
                         _events.emit(RealtimeEvent.Connected)
                         resubscribeAll()
@@ -80,6 +87,7 @@ class RealtimeWebSocketManager @Inject constructor(
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    stopKeepAlive()
                     isConnected = false
                     this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
@@ -88,6 +96,7 @@ class RealtimeWebSocketManager @Inject constructor(
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    stopKeepAlive()
                     isConnected = false
                     this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
@@ -100,6 +109,7 @@ class RealtimeWebSocketManager @Inject constructor(
                     t: Throwable,
                     response: okhttp3.Response?,
                 ) {
+                    stopKeepAlive()
                     isConnected = false
                     this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
@@ -117,6 +127,7 @@ class RealtimeWebSocketManager @Inject constructor(
     }
 
     fun disconnect() {
+        stopKeepAlive()
         webSocket?.close(1000, "client_disconnect")
         webSocket = null
         isConnected = false
@@ -151,6 +162,21 @@ class RealtimeWebSocketManager @Inject constructor(
         if (isConnected) {
             webSocket?.send("""{"type":"ping"}""")
         }
+    }
+
+    private fun startKeepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = scope.launch {
+            while (isActive && webSocket != null) {
+                delay(25_000)
+                sendPing()
+            }
+        }
+    }
+
+    private fun stopKeepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = null
     }
 
     private suspend fun resubscribeAll() {

@@ -5,6 +5,7 @@ import com.example.securechatapp.data.remote.dto.BootstrapDeviceRequestDto
 import com.example.securechatapp.data.remote.dto.BootstrapDeviceResponseDto
 import com.example.securechatapp.data.remote.dto.CompleteUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CompleteUploadSessionResponseDto
+import com.example.securechatapp.data.remote.dto.ConversationEventsResponseDto
 import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
 import com.example.securechatapp.data.remote.dto.CreateConversationResponseDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
@@ -169,5 +170,12 @@ interface ChatBackendApi {
 
     @POST("auth/logout-all")
     suspend fun logoutAllSessions(): ApiEnvelopeDto<LogoutAllResponseDto>
+
+    @GET("sync/conversations/{conversationId}/events")
+    suspend fun getConversationEvents(
+        @Path("conversationId") conversationId: Int,
+        @Query("after_event_id") afterEventId: Int? = null,
+        @Query("limit") limit: Int = 200,
+    ): ApiEnvelopeDto<ConversationEventsResponseDto>
 
 }

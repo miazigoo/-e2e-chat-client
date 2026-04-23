@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.core.common.ConversationsRefreshBus
 import com.example.securechatapp.data.files.AttachmentDownloadEvent
 import com.example.securechatapp.data.files.AttachmentDownloadManager
 import com.example.securechatapp.data.files.AttachmentLocalState
@@ -15,8 +16,11 @@ import com.example.securechatapp.data.repository.AttachmentRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.data.repository.SessionRepository
+import com.example.securechatapp.data.repository.SyncRepository
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.ConversationEventTypes
+import com.example.securechatapp.domain.model.ConversationSyncEvent
 import com.example.securechatapp.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -27,6 +31,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 data class ConversationUiState(
     val conversationId: Int? = null,
@@ -55,28 +63,38 @@ data class ConversationUiState(
 
 @HiltViewModel
 class ConversationViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    stateHandle: SavedStateHandle,
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val attachmentRepository: AttachmentRepository,
+    private val syncRepository: SyncRepository,
     private val sessionRepository: SessionRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
     private val attachmentDownloadManager: AttachmentDownloadManager,
     private val encryptedAttachmentFileManager: EncryptedAttachmentFileManager,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
+    private val conversationsRefreshBus: ConversationsRefreshBus,
 ) : ViewModel() {
+
+    private val savedStateHandle = stateHandle
 
     private val conversationId: Int = checkNotNull(
         savedStateHandle.get<Int>(Routes.ConversationArg)
     )
+
+    private var lastEventId: Int?
+        get() = savedStateHandle.get<Int>(KEY_LAST_EVENT_ID)
+        set(value) {
+            savedStateHandle[KEY_LAST_EVENT_ID] = value
+        }
 
     private val _state = MutableStateFlow(
         ConversationUiState(conversationId = conversationId)
     )
     val state: StateFlow<ConversationUiState> = _state.asStateFlow()
 
-    private var pollingJob: Job? = null
-    private var wsPingJob: Job? = null
+    private var syncFallbackJob: Job? = null
+    private val syncMutex = Mutex()
 
     init {
         observeRealtimeEvents()
@@ -126,10 +144,11 @@ class ConversationViewModel @Inject constructor(
 
                 _state.value = _state.value.copy(isUploadingAttachment = false)
 
-                refreshMessages(
+                reloadMessages(
                     markDelivered = false,
                     markRead = false,
                 )
+                conversationsRefreshBus.requestRefresh()
                 onSent()
             }.onFailure {
                 _state.value = _state.value.copy(
@@ -150,10 +169,11 @@ class ConversationViewModel @Inject constructor(
                     conversationId = currentConversationId,
                     messageIds = listOf(messageId),
                 )
-                refreshMessages(
+                reloadMessages(
                     markDelivered = false,
                     markRead = false,
                 )
+                conversationsRefreshBus.requestRefresh()
                 _state.value = _state.value.copy(info = "Сообщение скрыто локально")
             }.onFailure {
                 _state.value = _state.value.copy(error = it.message)
@@ -172,10 +192,11 @@ class ConversationViewModel @Inject constructor(
                     conversationId = currentConversationId,
                     messageIds = listOf(messageId),
                 )
-                refreshMessages(
+                reloadMessages(
                     markDelivered = false,
                     markRead = false,
                 )
+                conversationsRefreshBus.requestRefresh()
                 _state.value = _state.value.copy(info = "Сообщение удалено для всех")
             }.onFailure {
                 _state.value = _state.value.copy(error = it.message)
@@ -313,6 +334,7 @@ class ConversationViewModel @Inject constructor(
                 error = null,
             )
 
+            syncFallbackJob?.cancel()
             realtimeWebSocketManager.disconnect()
             sessionRepository.logoutSession()
 
@@ -340,15 +362,18 @@ class ConversationViewModel @Inject constructor(
                     messages = emptyList(),
                 )
 
+                catchUpCursorToLatest()
+
                 realtimeWebSocketManager.connectIfNeeded()
                 realtimeWebSocketManager.subscribeConversation(conversationId)
 
-                refreshMessages(
+                reloadMessages(
                     markDelivered = true,
                     markRead = true,
                 )
-                startPolling()
-                startWsPing()
+
+                syncConversation()
+                startSyncFallback()
             }.onFailure {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -362,12 +387,13 @@ class ConversationViewModel @Inject constructor(
         viewModelScope.launch {
             realtimeWebSocketManager.events.collect { event ->
                 when (event) {
+                    is RealtimeEvent.Connected -> {
+                        syncConversation()
+                    }
+
                     is RealtimeEvent.ConversationEvent -> {
                         if (event.conversationId == conversationId) {
-                            refreshMessages(
-                                markDelivered = true,
-                                markRead = true,
-                            )
+                            syncConversation()
                         }
                     }
 
@@ -428,75 +454,217 @@ class ConversationViewModel @Inject constructor(
         _state.value = _state.value.copy(deletingMessageIds = current)
     }
 
-    private fun startPolling() {
-        pollingJob?.cancel()
-        pollingJob = viewModelScope.launch {
+    private fun startSyncFallback() {
+        syncFallbackJob?.cancel()
+        syncFallbackJob = viewModelScope.launch {
             while (isActive) {
-                delay(10_000)
-                refreshMessages(
+                delay(SYNC_FALLBACK_INTERVAL_MS)
+                syncConversation()
+            }
+        }
+    }
+
+    private suspend fun catchUpCursorToLatest() {
+        var cursor = lastEventId
+
+        while (true) {
+            val page = syncRepository.getConversationEvents(
+                conversationId = conversationId,
+                afterEventId = cursor,
+                limit = SYNC_PAGE_SIZE,
+            )
+
+            val last = page.items.lastOrNull() ?: break
+            cursor = last.eventId
+            lastEventId = last.eventId
+
+            if (!page.hasMore) break
+        }
+    }
+
+    private suspend fun syncConversation() {
+        val currentConversationId = _state.value.conversationId ?: return
+
+        syncMutex.withLock {
+            var cursor = lastEventId
+            var requiresReload = false
+            var processedAnyEvents = false
+
+            while (true) {
+                val page = syncRepository.getConversationEvents(
+                    conversationId = currentConversationId,
+                    afterEventId = cursor,
+                    limit = SYNC_PAGE_SIZE,
+                )
+
+                val events = page.items
+                if (events.isEmpty()) break
+
+                processedAnyEvents = true
+
+                events.forEach { event ->
+                    cursor = event.eventId
+                    lastEventId = event.eventId
+                    requiresReload = processConversationEvent(event) || requiresReload
+                }
+
+                if (!page.hasMore) break
+            }
+
+            if (requiresReload) {
+                reloadMessages(
                     markDelivered = true,
                     markRead = true,
                 )
             }
-        }
-    }
 
-    private fun startWsPing() {
-        wsPingJob?.cancel()
-        wsPingJob = viewModelScope.launch {
-            while (isActive) {
-                realtimeWebSocketManager.sendPing()
-                delay(25_000)
+            if (processedAnyEvents) {
+                conversationsRefreshBus.requestRefresh()
             }
         }
     }
 
-    private suspend fun refreshMessages(
+    private fun processConversationEvent(
+        event: ConversationSyncEvent,
+    ): Boolean {
+        return when (event.eventType) {
+            ConversationEventTypes.MESSAGE_DELIVERED -> {
+                val messageId = event.targetMessageId ?: event.payload?.intValue("message_id")
+                val deliveredAt = event.payload?.stringValue("delivered_at") ?: event.createdAt
+
+                if (messageId != null) {
+                    applyDeliveredLocally(
+                        messageId = messageId,
+                        deliveredAt = deliveredAt,
+                    )
+                }
+                false
+            }
+
+            ConversationEventTypes.MESSAGE_READ -> {
+                val messageId = event.targetMessageId ?: event.payload?.intValue("message_id")
+                val readAt = event.payload?.stringValue("read_at") ?: event.createdAt
+
+                if (messageId != null) {
+                    applyReadLocally(
+                        messageId = messageId,
+                        readAt = readAt,
+                    )
+                }
+                false
+            }
+
+            ConversationEventTypes.PARTICIPANT_KEY_CHANGED -> {
+                _state.value = _state.value.copy(
+                    info = "Ключи собеседника были обновлены"
+                )
+                false
+            }
+
+            ConversationEventTypes.MESSAGE_CREATED,
+            ConversationEventTypes.MESSAGE_DELETED_GLOBAL,
+            ConversationEventTypes.MESSAGE_HIDDEN_FOR_USER,
+            ConversationEventTypes.CONVERSATION_CLEARED_LOCAL,
+            ConversationEventTypes.CONVERSATION_CLEARED_GLOBAL,
+            ConversationEventTypes.FILE_UPLOADED,
+            ConversationEventTypes.FILE_DELETED,
+            ConversationEventTypes.CONVERSATION_PURGED -> true
+
+            else -> true
+        }
+    }
+
+    private fun applyDeliveredLocally(
+        messageId: Int,
+        deliveredAt: String,
+    ) {
+        var changed = false
+
+        val updated = _state.value.messages.map { message ->
+            if (message.messageId != messageId) return@map message
+
+            val nextDeliveredAt = message.deliveredAt ?: deliveredAt
+            if (nextDeliveredAt == message.deliveredAt) {
+                message
+            } else {
+                changed = true
+                message.copy(deliveredAt = nextDeliveredAt)
+            }
+        }
+
+        if (changed) {
+            _state.value = _state.value.copy(messages = updated)
+        }
+    }
+
+    private fun applyReadLocally(
+        messageId: Int,
+        readAt: String,
+    ) {
+        var changed = false
+
+        val updated = _state.value.messages.map { message ->
+            if (message.messageId != messageId) return@map message
+
+            val nextDeliveredAt = message.deliveredAt ?: readAt
+            val nextReadAt = message.readAt ?: readAt
+
+            if (nextDeliveredAt == message.deliveredAt && nextReadAt == message.readAt) {
+                message
+            } else {
+                changed = true
+                message.copy(
+                    deliveredAt = nextDeliveredAt,
+                    readAt = nextReadAt,
+                )
+            }
+        }
+
+        if (changed) {
+            _state.value = _state.value.copy(messages = updated)
+        }
+    }
+
+    private suspend fun reloadMessages(
         markDelivered: Boolean,
         markRead: Boolean,
     ) {
         val currentConversationId = _state.value.conversationId ?: return
         val peerUserId = _state.value.peerUserId ?: return
 
-        runCatching {
-            val messages = messageRepository.listMessages(
+        val messages = messageRepository.listMessages(
+            conversationId = currentConversationId,
+            peerUserId = peerUserId,
+        )
+
+        _state.value = _state.value.copy(
+            isLoading = false,
+            messages = messages,
+            error = null,
+        )
+
+        val deliveredCount = if (markDelivered) {
+            messageRepository.markIncomingMessagesAsDelivered(messages)
+        } else {
+            0
+        }
+
+        val readCount = if (markRead) {
+            messageRepository.markIncomingMessagesAsRead(messages)
+        } else {
+            0
+        }
+
+        if (deliveredCount > 0 || readCount > 0) {
+            val refreshedMessages = messageRepository.listMessages(
                 conversationId = currentConversationId,
                 peerUserId = peerUserId,
             )
 
             _state.value = _state.value.copy(
-                isLoading = false,
-                messages = messages,
-                error = null,
+                messages = refreshedMessages,
             )
-
-            val deliveredCount = if (markDelivered) {
-                messageRepository.markIncomingMessagesAsDelivered(messages)
-            } else {
-                0
-            }
-
-            val readCount = if (markRead) {
-                messageRepository.markIncomingMessagesAsRead(messages)
-            } else {
-                0
-            }
-
-            if (deliveredCount > 0 || readCount > 0) {
-                val refreshedMessages = messageRepository.listMessages(
-                    conversationId = currentConversationId,
-                    peerUserId = peerUserId,
-                )
-
-                _state.value = _state.value.copy(
-                    messages = refreshedMessages,
-                )
-            }
-        }.onFailure {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                error = it.message,
-            )
+            conversationsRefreshBus.requestRefresh()
         }
     }
 
@@ -717,9 +885,24 @@ class ConversationViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        pollingJob?.cancel()
-        wsPingJob?.cancel()
+        syncFallbackJob?.cancel()
         realtimeWebSocketManager.unsubscribeConversation(conversationId)
         super.onCleared()
     }
+
+    private companion object {
+        const val KEY_LAST_EVENT_ID = "last_event_id"
+        const val SYNC_PAGE_SIZE = 200
+        const val SYNC_FALLBACK_INTERVAL_MS = 20_000L
+    }
+}
+
+private fun JsonObject.stringValue(key: String): String? {
+    return runCatching {
+        this[key]?.jsonPrimitive?.content
+    }.getOrNull()
+}
+
+private fun JsonObject.intValue(key: String): Int? {
+    return stringValue(key)?.toIntOrNull()
 }

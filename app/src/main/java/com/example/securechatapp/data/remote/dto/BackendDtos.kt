@@ -2,6 +2,7 @@ package com.example.securechatapp.data.remote.dto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class ApiMetaDto(
@@ -608,4 +609,33 @@ data class LogoutAllResponseDto(
     val message: String,
     @SerialName("revoked_sessions")
     val revokedSessions: Int,
+)
+@Serializable
+data class ConversationEventItemDto(
+    @SerialName("event_id")
+    val eventId: Int,
+    @SerialName("event_uuid")
+    val eventUuid: String,
+    @SerialName("event_type")
+    val eventType: String,
+    @SerialName("actor_user_id")
+    val actorUserId: Int? = null,
+    @SerialName("actor_device_id")
+    val actorDeviceId: Int? = null,
+    @SerialName("target_message_id")
+    val targetMessageId: Int? = null,
+    val payload: JsonObject? = null,
+    @SerialName("created_at")
+    val createdAt: String,
+)
+
+@Serializable
+data class ConversationEventsResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    val items: List<ConversationEventItemDto> = emptyList(),
+    @SerialName("next_after_event_id")
+    val nextAfterEventId: Int? = null,
+    @SerialName("has_more")
+    val hasMore: Boolean,
 )
