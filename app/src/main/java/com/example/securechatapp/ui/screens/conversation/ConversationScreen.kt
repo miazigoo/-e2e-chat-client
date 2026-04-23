@@ -131,7 +131,7 @@ fun ConversationScreen(
                                 onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },
                                 onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
                                 onAttachmentsClick = {
-                                    viewModel.showMessageAttachments(row.message.messageId)
+                                    viewModel.showMessageAttachments(row.message)
                                 }
                             )
                         }
@@ -209,10 +209,11 @@ fun ConversationScreen(
             )
         }
 
-        if (state.isLoadingImagePreview || state.imagePreviewUrl != null) {
+        if (state.isLoadingImagePreview || state.imagePreviewUrl != null || state.imagePreviewBytes != null) {
             ImagePreviewDialog(
                 fileName = state.imagePreviewFileName ?: "Изображение",
                 imageUrl = state.imagePreviewUrl,
+                imageBytes = state.imagePreviewBytes,
                 isLoading = state.isLoadingImagePreview,
                 isDownloading = state.downloadingAttachmentId == state.imagePreviewAttachmentId,
                 onDismiss = viewModel::dismissImagePreview,

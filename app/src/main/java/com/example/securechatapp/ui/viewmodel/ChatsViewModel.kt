@@ -3,14 +3,15 @@ package com.example.securechatapp.ui.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.data.files.AttachmentDownloadEvent
 import com.example.securechatapp.data.files.AttachmentDownloadManager
 import com.example.securechatapp.data.files.AttachmentLocalState
 import com.example.securechatapp.data.files.AttachmentUploadManager
+import com.example.securechatapp.data.files.EncryptedAttachmentFileManager
 import com.example.securechatapp.data.remote.dto.UserSearchItemDto
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.BackendRepository
-import com.example.securechatapp.data.files.AttachmentDownloadEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -41,7 +42,9 @@ data class ChatsUiState(
     val downloadingAttachmentId: Int? = null,
     val imagePreviewAttachmentId: Int? = null,
     val imagePreviewUrl: String? = null,
+    val imagePreviewBytes: ByteArray? = null,
     val imagePreviewFileName: String? = null,
+    val imagePreviewAttachment: BackendRepository.AttachmentUi? = null,
     val isLoadingImagePreview: Boolean = false,
 )
 
@@ -50,6 +53,7 @@ class ChatsViewModel @Inject constructor(
     private val repo: BackendRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
     private val attachmentDownloadManager: AttachmentDownloadManager,
+    private val encryptedAttachmentFileManager: EncryptedAttachmentFileManager,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
 ) : ViewModel() {
 
@@ -184,7 +188,9 @@ class ChatsViewModel @Inject constructor(
             info = null,
             imagePreviewAttachmentId = null,
             imagePreviewUrl = null,
+            imagePreviewBytes = null,
             imagePreviewFileName = null,
+            imagePreviewAttachment = null,
             isLoadingImagePreview = false,
         )
         refreshConversations()
@@ -207,9 +213,9 @@ class ChatsViewModel @Inject constructor(
                     isUploadingAttachment = attachmentUri != null,
                 )
 
-                val attachmentIds = if (attachmentUri != null) {
+                val uploadedEncryptedAttachments = if (attachmentUri != null) {
                     listOf(
-                        attachmentUploadManager.uploadSingleAttachment(
+                        attachmentUploadManager.uploadSingleEncryptedAttachment(
                             conversationId = conversationId,
                             uri = attachmentUri,
                         )
@@ -222,7 +228,8 @@ class ChatsViewModel @Inject constructor(
                     conversationId = conversationId,
                     recipientUserId = peerUserId,
                     plainText = text,
-                    attachmentIds = attachmentIds,
+                    attachmentIds = uploadedEncryptedAttachments.map { it.attachmentId },
+                    attachmentDescriptors = uploadedEncryptedAttachments.map { it.descriptor },
                 )
 
                 _state.value = _state.value.copy(isUploadingAttachment = false)
@@ -390,9 +397,10 @@ class ChatsViewModel @Inject constructor(
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = viewModelScope.launch {
+            repo.heartbeat()
             while (isActive) {
-                repo.heartbeat()
                 delay(45_000)
+                repo.heartbeat()
             }
         }
     }
@@ -466,28 +474,32 @@ class ChatsViewModel @Inject constructor(
         super.onCleared()
     }
 
-    fun showMessageAttachments(messageId: Int) {
+    fun showMessageAttachments(message: BackendRepository.MessageUi) {
         viewModelScope.launch {
             _state.value = _state.value.copy(
-                attachmentSheetMessageId = messageId,
+                attachmentSheetMessageId = message.messageId,
                 selectedMessageAttachments = emptyList(),
                 attachmentLocalStates = emptyMap(),
                 isLoadingAttachments = true,
                 downloadingAttachmentId = null,
                 imagePreviewAttachmentId = null,
                 imagePreviewUrl = null,
+                imagePreviewBytes = null,
                 imagePreviewFileName = null,
+                imagePreviewAttachment = null,
                 isLoadingImagePreview = false,
                 error = null,
             )
 
             runCatching {
-                repo.listMessageAttachments(messageId)
+                if (message.attachments.isNotEmpty()) {
+                    message.attachments
+                } else {
+                    repo.listMessageAttachments(message.messageId)
+                }
             }.onSuccess { attachments ->
                 val localStates = attachments.associate { attachment ->
-                    attachment.attachmentId to attachmentDownloadManager.getAttachmentState(
-                        attachment.attachmentId
-                    )
+                    attachment.attachmentId to resolveLocalAttachmentState(attachment)
                 }
 
                 _state.value = _state.value.copy(
@@ -520,7 +532,7 @@ class ChatsViewModel @Inject constructor(
     fun onAttachmentSelected(
         attachment: BackendRepository.AttachmentUi,
     ) {
-        val localState = attachmentDownloadManager.getAttachmentState(attachment.attachmentId)
+        val localState = resolveLocalAttachmentState(attachment)
 
         _state.value = _state.value.copy(
             attachmentLocalStates = _state.value.attachmentLocalStates + (
@@ -530,9 +542,12 @@ class ChatsViewModel @Inject constructor(
 
         when (localState) {
             AttachmentLocalState.DOWNLOADED -> {
-                val opened = attachmentDownloadManager.openDownloadedAttachment(
-                    attachment.attachmentId
-                )
+                val opened = if (attachment.hasEncryptedBlobKeys) {
+                    encryptedAttachmentFileManager.openSavedAttachment(attachment.attachmentId)
+                } else {
+                    attachmentDownloadManager.openDownloadedAttachment(attachment.attachmentId)
+                }
+
                 if (!opened) {
                     _state.value = _state.value.copy(
                         error = "Не удалось открыть скачанный файл"
@@ -551,7 +566,11 @@ class ChatsViewModel @Inject constructor(
                 if (attachment.isImage) {
                     previewImageAttachment(attachment)
                 } else {
-                    downloadAttachment(attachment.attachmentId)
+                    if (attachment.hasEncryptedBlobKeys) {
+                        downloadEncryptedAttachment(attachment)
+                    } else {
+                        downloadAttachment(attachment.attachmentId)
+                    }
                 }
             }
         }
@@ -568,40 +587,80 @@ class ChatsViewModel @Inject constructor(
                 downloadingAttachmentId = null,
                 imagePreviewAttachmentId = attachment.attachmentId,
                 imagePreviewUrl = null,
+                imagePreviewBytes = null,
                 imagePreviewFileName = attachment.fileName,
+                imagePreviewAttachment = attachment,
                 isLoadingImagePreview = true,
                 error = null,
                 info = null,
             )
 
-            runCatching {
-                repo.getAttachmentDownloadInfo(attachment.attachmentId)
-            }.onSuccess { previewInfo ->
-                if (previewInfo == null) {
+            if (attachment.hasEncryptedBlobKeys) {
+                runCatching {
+                    val downloadInfo = repo.getAttachmentDownloadInfo(attachment.attachmentId)
+                        ?: error("Не удалось получить ссылку на encrypted attachment")
+
+                    encryptedAttachmentFileManager.downloadAndDecryptBytes(
+                        downloadUrl = downloadInfo.downloadUrl,
+                        blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
+                        blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                    )
+                }.onSuccess { bytes ->
+                    _state.value = _state.value.copy(
+                        imagePreviewAttachmentId = attachment.attachmentId,
+                        imagePreviewUrl = null,
+                        imagePreviewBytes = bytes,
+                        imagePreviewFileName = attachment.fileName,
+                        imagePreviewAttachment = attachment,
+                        isLoadingImagePreview = false,
+                    )
+                }.onFailure {
                     _state.value = _state.value.copy(
                         imagePreviewAttachmentId = null,
                         imagePreviewUrl = null,
+                        imagePreviewBytes = null,
                         imagePreviewFileName = null,
+                        imagePreviewAttachment = null,
                         isLoadingImagePreview = false,
-                        error = "Не удалось получить превью изображения",
+                        error = it.message,
                     )
-                    return@onSuccess
                 }
+            } else {
+                runCatching {
+                    repo.getAttachmentDownloadInfo(attachment.attachmentId)
+                }.onSuccess { previewInfo ->
+                    if (previewInfo == null) {
+                        _state.value = _state.value.copy(
+                            imagePreviewAttachmentId = null,
+                            imagePreviewUrl = null,
+                            imagePreviewBytes = null,
+                            imagePreviewFileName = null,
+                            imagePreviewAttachment = null,
+                            isLoadingImagePreview = false,
+                            error = "Не удалось получить превью изображения",
+                        )
+                        return@onSuccess
+                    }
 
-                _state.value = _state.value.copy(
-                    imagePreviewAttachmentId = previewInfo.attachmentId,
-                    imagePreviewUrl = previewInfo.downloadUrl,
-                    imagePreviewFileName = previewInfo.fileName,
-                    isLoadingImagePreview = false,
-                )
-            }.onFailure {
-                _state.value = _state.value.copy(
-                    imagePreviewAttachmentId = null,
-                    imagePreviewUrl = null,
-                    imagePreviewFileName = null,
-                    isLoadingImagePreview = false,
-                    error = it.message,
-                )
+                    _state.value = _state.value.copy(
+                        imagePreviewAttachmentId = previewInfo.attachmentId,
+                        imagePreviewUrl = previewInfo.downloadUrl,
+                        imagePreviewBytes = null,
+                        imagePreviewFileName = previewInfo.fileName,
+                        imagePreviewAttachment = attachment,
+                        isLoadingImagePreview = false,
+                    )
+                }.onFailure {
+                    _state.value = _state.value.copy(
+                        imagePreviewAttachmentId = null,
+                        imagePreviewUrl = null,
+                        imagePreviewBytes = null,
+                        imagePreviewFileName = null,
+                        imagePreviewAttachment = null,
+                        isLoadingImagePreview = false,
+                        error = it.message,
+                    )
+                }
             }
         }
     }
@@ -610,14 +669,76 @@ class ChatsViewModel @Inject constructor(
         _state.value = _state.value.copy(
             imagePreviewAttachmentId = null,
             imagePreviewUrl = null,
+            imagePreviewBytes = null,
             imagePreviewFileName = null,
+            imagePreviewAttachment = null,
             isLoadingImagePreview = false,
         )
     }
 
     fun downloadCurrentPreview() {
-        val attachmentId = _state.value.imagePreviewAttachmentId ?: return
-        downloadAttachment(attachmentId)
+        val attachment = _state.value.imagePreviewAttachment ?: return
+        if (attachment.hasEncryptedBlobKeys) {
+            downloadEncryptedAttachment(attachment)
+        } else {
+            downloadAttachment(attachment.attachmentId)
+        }
+    }
+
+    private fun downloadEncryptedAttachment(
+        attachment: BackendRepository.AttachmentUi,
+    ) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                downloadingAttachmentId = attachment.attachmentId,
+                attachmentLocalStates = _state.value.attachmentLocalStates + (
+                        attachment.attachmentId to AttachmentLocalState.DOWNLOADING
+                        ),
+                error = null,
+                info = null,
+            )
+
+            runCatching {
+                val downloadInfo = repo.getAttachmentDownloadInfo(attachment.attachmentId)
+                    ?: error("Не удалось получить данные для скачивания")
+
+                encryptedAttachmentFileManager.saveDecryptedAttachmentToDownloads(
+                    attachmentId = attachment.attachmentId,
+                    downloadUrl = downloadInfo.downloadUrl,
+                    fileName = attachment.fileName,
+                    mimeType = attachment.mimeType,
+                    blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
+                    blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                )
+            }.onSuccess { uri ->
+                if (uri == null) {
+                    _state.value = _state.value.copy(
+                        downloadingAttachmentId = null,
+                        attachmentLocalStates = _state.value.attachmentLocalStates + (
+                                attachment.attachmentId to AttachmentLocalState.FAILED
+                                ),
+                        error = "Не удалось сохранить расшифрованный файл",
+                    )
+                    return@onSuccess
+                }
+
+                _state.value = _state.value.copy(
+                    downloadingAttachmentId = null,
+                    attachmentLocalStates = _state.value.attachmentLocalStates + (
+                            attachment.attachmentId to AttachmentLocalState.DOWNLOADED
+                            ),
+                    info = "Файл расшифрован и сохранён в Downloads",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    downloadingAttachmentId = null,
+                    attachmentLocalStates = _state.value.attachmentLocalStates + (
+                            attachment.attachmentId to AttachmentLocalState.FAILED
+                            ),
+                    error = it.message ?: "Не удалось скачать и расшифровать файл",
+                )
+            }
+        }
     }
 
     fun downloadAttachment(attachmentId: Int) {
@@ -678,6 +799,16 @@ class ChatsViewModel @Inject constructor(
                     error = it.message,
                 )
             }
+        }
+    }
+
+    private fun resolveLocalAttachmentState(
+        attachment: BackendRepository.AttachmentUi,
+    ): AttachmentLocalState {
+        return if (attachment.hasEncryptedBlobKeys) {
+            encryptedAttachmentFileManager.getAttachmentState(attachment.attachmentId)
+        } else {
+            attachmentDownloadManager.getAttachmentState(attachment.attachmentId)
         }
     }
 }

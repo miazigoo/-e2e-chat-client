@@ -1,11 +1,12 @@
 package com.example.securechatapp.data.repository
 
+import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.DevCryptoEngine
+import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
+import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.*
-import com.example.securechatapp.core.crypto.SecureMessageAttachmentRef
-import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,6 +18,7 @@ class BackendRepository @Inject constructor(
     private val api: ChatBackendApi,
     private val sessionStore: SessionLocalDataSource,
     private val crypto: DevCryptoEngine,
+    private val attachmentCryptoEngine: AttachmentCryptoEngine,
     private val json: Json,
 ) {
     data class ConversationUi(
@@ -38,6 +40,7 @@ class BackendRepository @Inject constructor(
         val readAt: String? = null,
         val hasAttachments: Boolean = false,
         val attachmentIds: List<Int> = emptyList(),
+        val attachments: List<AttachmentUi> = emptyList(),
     )
 
     data class AttachmentUi(
@@ -46,9 +49,15 @@ class BackendRepository @Inject constructor(
         val mimeType: String?,
         val fileSize: Long,
         val canDownload: Boolean = true,
+        val blobKeyBase64: String? = null,
+        val blobNonceBase64: String? = null,
+        val sha256EncryptedBlob: String? = null,
     ) {
         val isImage: Boolean
             get() = mimeType?.startsWith("image/") == true
+
+        val hasEncryptedBlobKeys: Boolean
+            get() = !blobKeyBase64.isNullOrBlank() && !blobNonceBase64.isNullOrBlank()
     }
 
     data class AttachmentDownloadInfo(
@@ -64,11 +73,17 @@ class BackendRepository @Inject constructor(
         } catch (e: HttpException) {
             val body = e.response()?.errorBody()?.string()
             val parsed = body?.let {
-                runCatching { json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it) }.getOrNull()
+                runCatching {
+                    json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it)
+                }.getOrNull()
             }
 
             val fallbackMessage = buildString {
-                append(parsed?.error?.message ?: e.message().orEmpty().ifBlank { "HTTP ${e.code()}" })
+                append(
+                    parsed?.error?.message ?: e.message().orEmpty().ifBlank {
+                        "HTTP ${e.code()}"
+                    }
+                )
                 if (!body.isNullOrBlank() && parsed == null) {
                     append(": ")
                     append(body)
@@ -128,8 +143,9 @@ class BackendRepository @Inject constructor(
                     createdAt = dto.serverReceivedAt,
                     deliveredAt = dto.deliveredAt,
                     readAt = dto.readAt,
-                    hasAttachments = dto.hasAttachments || decoded.attachmentIds.isNotEmpty(),
-                    attachmentIds = decoded.attachmentIds,
+                    hasAttachments = dto.hasAttachments || decoded.attachments.isNotEmpty(),
+                    attachmentIds = decoded.attachments.map { it.attachmentId }.distinct(),
+                    attachments = decoded.attachments,
                 )
             }
     }
@@ -177,8 +193,25 @@ class BackendRepository @Inject constructor(
         recipientUserId: Int,
         plainText: String,
         attachmentIds: List<Int> = emptyList(),
+        attachmentDescriptors: List<EncryptedAttachmentDescriptor> = emptyList(),
     ) {
-        val distinctAttachmentIds = attachmentIds.distinct()
+        val normalizedDescriptors = if (attachmentDescriptors.isNotEmpty()) {
+            attachmentDescriptors
+                .filter { it.attachmentId > 0 }
+                .distinctBy { it.attachmentId }
+        } else {
+            attachmentIds
+                .distinct()
+                .map { attachmentId ->
+                    EncryptedAttachmentDescriptor(
+                        attachmentId = attachmentId,
+                    )
+                }
+        }
+
+        val distinctAttachmentIds = normalizedDescriptors
+            .map { it.attachmentId }
+            .distinct()
 
         if (plainText.isBlank() && distinctAttachmentIds.isEmpty()) {
             error("Нельзя отправить пустое сообщение")
@@ -186,7 +219,7 @@ class BackendRepository @Inject constructor(
 
         val payloadJson = buildEncryptedMessagePayload(
             plainText = plainText,
-            attachmentIds = distinctAttachmentIds,
+            attachmentDescriptors = normalizedDescriptors,
         )
 
         val encrypted = crypto.encryptPlainText(payloadJson)
@@ -351,18 +384,16 @@ class BackendRepository @Inject constructor(
 
     private data class DecodedMessagePayload(
         val text: String,
-        val attachmentIds: List<Int>,
+        val attachments: List<AttachmentUi>,
     )
 
     private fun buildEncryptedMessagePayload(
         plainText: String,
-        attachmentIds: List<Int>,
+        attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     ): String {
         val payload = SecureMessagePayloadV1(
             text = plainText.takeIf { it.isNotBlank() },
-            attachments = attachmentIds.distinct().map { attachmentId ->
-                SecureMessageAttachmentRef(attachmentId = attachmentId)
-            },
+            attachments = attachmentDescriptors.distinctBy { it.attachmentId },
         )
 
         return json.encodeToString(
@@ -386,22 +417,62 @@ class BackendRepository @Inject constructor(
         if (payload == null || payload.schema != SecureMessagePayloadV1.SCHEMA) {
             return DecodedMessagePayload(
                 text = decrypted,
-                attachmentIds = emptyList(),
+                attachments = emptyList(),
             )
         }
 
-        val attachmentIds = payload.attachments
-            .map { it.attachmentId }
-            .distinct()
+        val attachments = payload.attachments
+            .map { descriptor -> descriptorToAttachmentUi(descriptor) }
+            .distinctBy { it.attachmentId }
 
         val text = payload.text
             ?.takeIf { it.isNotBlank() }
-            ?: if (attachmentIds.isNotEmpty()) "[attachment]" else ""
+            ?: if (attachments.isNotEmpty()) "[attachment]" else ""
 
         return DecodedMessagePayload(
             text = text,
-            attachmentIds = attachmentIds,
+            attachments = attachments,
         )
     }
 
+    private fun descriptorToAttachmentUi(
+        descriptor: EncryptedAttachmentDescriptor,
+    ): AttachmentUi {
+        val decryptedFileName = decryptAttachmentFileName(descriptor)
+        val fallbackName = fallbackAttachmentName(
+            attachmentId = descriptor.attachmentId,
+            mimeType = descriptor.mimeType,
+        )
+
+        return AttachmentUi(
+            attachmentId = descriptor.attachmentId,
+            fileName = decryptedFileName?.takeIf { it.isNotBlank() } ?: fallbackName,
+            mimeType = descriptor.mimeType,
+            fileSize = descriptor.fileSize,
+            canDownload = true,
+            blobKeyBase64 = descriptor.blobKeyBase64.takeIf { it.isNotBlank() },
+            blobNonceBase64 = descriptor.blobNonceBase64.takeIf { it.isNotBlank() },
+            sha256EncryptedBlob = descriptor.sha256EncryptedBlob.takeIf { it.isNotBlank() },
+        )
+    }
+
+    private fun decryptAttachmentFileName(
+        descriptor: EncryptedAttachmentDescriptor,
+    ): String? {
+        val ciphertextBase64 = descriptor.encryptedFileName
+        val keyBase64 = descriptor.fileNameKeyBase64
+        val nonceBase64 = descriptor.fileNameNonceBase64
+
+        if (ciphertextBase64.isNullOrBlank() || keyBase64.isNullOrBlank() || nonceBase64.isNullOrBlank()) {
+            return null
+        }
+
+        return runCatching {
+            attachmentCryptoEngine.decryptText(
+                ciphertextBase64 = ciphertextBase64,
+                keyBase64 = keyBase64,
+                nonceBase64 = nonceBase64,
+            )
+        }.getOrNull()
+    }
 }
