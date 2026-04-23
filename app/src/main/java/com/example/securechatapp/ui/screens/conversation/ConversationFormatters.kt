@@ -1,13 +1,13 @@
 package com.example.securechatapp.ui.screens.conversation
 
-import com.example.securechatapp.data.repository.BackendRepository
+import com.example.securechatapp.domain.model.ChatMessage
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 fun buildConversationRows(
-    messages: List<BackendRepository.MessageUi>,
+    messages: List<ChatMessage>,
 ): List<ConversationRow> {
     if (messages.isEmpty()) return emptyList()
 
@@ -50,7 +50,7 @@ fun buildConversationRows(
 }
 
 fun buildConversationSubtitle(
-    messages: List<BackendRepository.MessageUi>,
+    messages: List<ChatMessage>,
 ): String {
     if (messages.isEmpty()) return "начните защищённый диалог"
 

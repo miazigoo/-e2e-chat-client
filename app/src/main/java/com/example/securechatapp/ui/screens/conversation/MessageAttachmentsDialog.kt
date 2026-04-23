@@ -16,17 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.data.files.AttachmentLocalState
-import com.example.securechatapp.data.repository.BackendRepository
+import com.example.securechatapp.domain.model.AttachmentItem
 import java.util.Locale
 
 @Composable
 fun MessageAttachmentsDialog(
-    attachments: List<BackendRepository.AttachmentUi>,
+    attachments: List<AttachmentItem>,
     attachmentLocalStates: Map<Int, AttachmentLocalState>,
     isLoading: Boolean,
     downloadingAttachmentId: Int?,
     onDismiss: () -> Unit,
-    onAttachmentClick: (BackendRepository.AttachmentUi) -> Unit,
+    onAttachmentClick: (AttachmentItem) -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -82,7 +82,7 @@ fun MessageAttachmentsDialog(
 
 @Composable
 private fun AttachmentRow(
-    attachment: BackendRepository.AttachmentUi,
+    attachment: AttachmentItem,
     localState: AttachmentLocalState,
     isDownloading: Boolean,
     onClick: () -> Unit,
@@ -132,7 +132,7 @@ private fun AttachmentRow(
 }
 
 private fun buildAttachmentSubtitle(
-    attachment: BackendRepository.AttachmentUi,
+    attachment: AttachmentItem,
     localState: AttachmentLocalState,
     isDownloading: Boolean,
 ): String {
@@ -156,7 +156,7 @@ private fun buildAttachmentSubtitle(
 }
 
 private fun attachmentIcon(
-    attachment: BackendRepository.AttachmentUi,
+    attachment: AttachmentItem,
     localState: AttachmentLocalState,
 ): String {
     return when (localState) {

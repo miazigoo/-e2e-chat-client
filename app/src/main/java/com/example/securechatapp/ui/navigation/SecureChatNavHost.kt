@@ -1,11 +1,8 @@
 package com.example.securechatapp.ui.navigation
 
-import android.content.Context
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,24 +18,14 @@ import com.example.securechatapp.ui.screens.conversation.ConversationScreen
 import com.example.securechatapp.ui.screens.settings.SettingsScreen
 import com.example.securechatapp.ui.viewmodel.AuthViewModel
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
-
-private tailrec fun Context.findActivity(): ComponentActivity {
-    return when (this) {
-        is ComponentActivity -> this
-        is android.content.ContextWrapper -> baseContext.findActivity()
-        else -> error("No ComponentActivity found in context chain")
-    }
-}
 
 @Composable
 fun SecureChatNavHost() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.uiState.collectAsState()
-
-    val activity = LocalContext.current.findActivity()
-    val chatsViewModel: ChatsViewModel = hiltViewModel(activity)
 
     NavHost(
         navController = navController,
@@ -109,6 +96,8 @@ fun SecureChatNavHost() {
         }
 
         composable(Routes.Chats) {
+            val chatsViewModel: ChatsViewModel = hiltViewModel()
+
             ChatsScreen(
                 viewModel = chatsViewModel,
                 onConversationClick = { conversationId ->
@@ -145,16 +134,12 @@ fun SecureChatNavHost() {
             arguments = listOf(
                 navArgument(Routes.ConversationArg) { type = NavType.IntType }
             ),
-        ) { backStackEntry ->
-            val conversationId = backStackEntry.arguments?.getInt(Routes.ConversationArg) ?: return@composable
+        ) {
+            val conversationViewModel: ConversationViewModel = hiltViewModel()
 
             ConversationScreen(
-                conversationId = conversationId,
-                viewModel = chatsViewModel,
-                onBack = {
-                    chatsViewModel.backToConversationList()
-                    navController.popBackStack()
-                },
+                viewModel = conversationViewModel,
+                onBack = { navController.popBackStack() },
                 onLoggedOut = {
                     navController.navigate(Routes.Login) {
                         popUpTo(Routes.Chats) { inclusive = true }

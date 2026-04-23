@@ -26,14 +26,19 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.data.remote.dto.UserSearchItemDto
-import com.example.securechatapp.data.repository.BackendRepository
+import com.example.securechatapp.domain.model.ConversationListItem
+import com.example.securechatapp.domain.model.UserSearchItem
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -244,7 +249,7 @@ private fun ChatsTopBar(
 
 @Composable
 private fun SearchUserItem(
-    user: UserSearchItemDto,
+    user: UserSearchItem,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -284,7 +289,7 @@ private fun SearchUserItem(
 
 @Composable
 private fun ChatListItem(
-    item: BackendRepository.ConversationUi,
+    item: ConversationListItem,
     onClick: () -> Unit,
 ) {
     Surface(

@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
-import com.example.securechatapp.data.repository.BackendRepository
+import com.example.securechatapp.data.repository.SessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -42,7 +42,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val sessionLocalDataSource: SessionLocalDataSource,
     private val themePreferenceDataSource: ThemePreferenceDataSource,
-    private val repo: BackendRepository,
+    private val sessionRepository: SessionRepository,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -112,7 +112,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            val lastSeenAt = repo.heartbeat()
+            val lastSeenAt = sessionRepository.heartbeat()
 
             _uiState.update {
                 it.copy(
@@ -139,7 +139,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            repo.logoutSession()
+            sessionRepository.logoutSession()
 
             _uiState.update {
                 it.copy(isLoggingOut = false)
@@ -159,7 +159,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            repo.logoutAllSessions()
+            sessionRepository.logoutAllSessions()
 
             _uiState.update {
                 it.copy(isLoggingOutAll = false)
@@ -179,7 +179,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            repo.revokeCurrentDevice()
+            sessionRepository.revokeCurrentDevice()
 
             _uiState.update {
                 it.copy(isRevokingDevice = false)
