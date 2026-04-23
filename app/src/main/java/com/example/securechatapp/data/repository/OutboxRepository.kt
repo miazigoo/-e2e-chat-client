@@ -92,13 +92,17 @@ class OutboxRepository @Inject constructor(
         return dao.getByLocalMessageId(localMessageId)?.toPending()
     }
 
-    suspend fun listQueuedMessageIds(
+    suspend fun listQueuedMessages(): List<PendingOutgoingMessage> {
+        return dao.listByStatus(STATUS_QUEUED).map { it.toPending() }
+    }
+
+    suspend fun listQueuedMessages(
         conversationId: Int,
-    ): List<Int> {
+    ): List<PendingOutgoingMessage> {
         return dao.listByConversationAndStatus(
             conversationId = conversationId,
             status = STATUS_QUEUED,
-        ).map { it.localMessageId }
+        ).map { it.toPending() }
     }
 
     suspend fun markSending(
@@ -136,6 +140,10 @@ class OutboxRepository @Inject constructor(
         conversationId: Int,
     ) {
         dao.requeueSendingForConversation(conversationId)
+    }
+
+    suspend fun requeueAllSendingMessages() {
+        dao.requeueAllSending()
     }
 
     suspend fun deletePendingMessage(

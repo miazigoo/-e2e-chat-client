@@ -40,6 +40,17 @@ interface PendingMessageOutboxDao {
         status: String,
     ): List<PendingMessageOutboxEntity>
 
+    @Query(
+        """
+        SELECT * FROM pending_message_outbox
+        WHERE status = :status
+        ORDER BY createdAt ASC, localMessageId ASC
+        """
+    )
+    suspend fun listByStatus(
+        status: String,
+    ): List<PendingMessageOutboxEntity>
+
     @Upsert
     suspend fun upsert(entity: PendingMessageOutboxEntity)
 
@@ -73,4 +84,13 @@ interface PendingMessageOutboxDao {
         """
     )
     suspend fun requeueSendingForConversation(conversationId: Int)
+
+    @Query(
+        """
+        UPDATE pending_message_outbox
+        SET status = 'queued', errorMessage = NULL
+        WHERE status = 'sending'
+        """
+    )
+    suspend fun requeueAllSending()
 }

@@ -16,6 +16,7 @@ import com.example.securechatapp.data.repository.AttachmentRepository
 import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.MessageRepository
+import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.OutboxRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.SyncRepository
@@ -74,6 +75,7 @@ class ConversationViewModel @Inject constructor(
     private val attachmentRepository: AttachmentRepository,
     private val chatCacheRepository: ChatCacheRepository,
     private val outboxRepository: OutboxRepository,
+    private val outboxDispatcher: OutboxDispatcher,
     private val syncRepository: SyncRepository,
     private val sessionRepository: SessionRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
@@ -147,7 +149,14 @@ class ConversationViewModel @Inject constructor(
                     isUploadingAttachment = false,
                 )
 
-                dispatchQueuedMessages()
+                outboxDispatcher.drainConversation(currentConversationId)
+                runCatching {
+                    reloadMessages(
+                        markDelivered = false,
+                        markRead = false,
+                    )
+                }
+
                 onSent()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -163,7 +172,13 @@ class ConversationViewModel @Inject constructor(
 
         viewModelScope.launch {
             outboxRepository.requeueFailedMessage(messageId)
-            dispatchQueuedMessages()
+            outboxDispatcher.drainMessage(messageId)
+            runCatching {
+                reloadMessages(
+                    markDelivered = false,
+                    markRead = false,
+                )
+            }
         }
     }
 
@@ -390,7 +405,7 @@ class ConversationViewModel @Inject constructor(
                     markRead = true,
                 )
 
-                dispatchQueuedMessages()
+                outboxDispatcher.drainConversation(conversationId)
                 startOutboxFallback()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -509,53 +524,10 @@ class ConversationViewModel @Inject constructor(
         outboxFallbackJob?.cancel()
         outboxFallbackJob = viewModelScope.launch {
             while (isActive) {
-                dispatchQueuedMessages()
+                outboxDispatcher.drainConversation(conversationId)
                 delay(OUTBOX_FALLBACK_INTERVAL_MS)
                 syncConversation()
             }
-        }
-    }
-
-    private fun dispatchQueuedMessages() {
-        val currentConversationId = _state.value.conversationId ?: return
-
-        viewModelScope.launch {
-            val queuedIds = outboxRepository.listQueuedMessageIds(currentConversationId)
-            queuedIds.forEach { localId ->
-                dispatchPendingMessage(localId)
-            }
-        }
-    }
-
-    private suspend fun dispatchPendingMessage(
-        localMessageId: Int,
-    ) {
-        val pending = outboxRepository.getPendingMessage(localMessageId) ?: return
-
-        try {
-            outboxRepository.markSending(localMessageId)
-
-            messageRepository.sendMessage(
-                conversationId = pending.conversationId,
-                recipientUserId = pending.recipientUserId,
-                plainText = pending.plainText,
-                attachmentIds = pending.attachmentIds,
-                attachmentDescriptors = pending.attachmentDescriptors,
-                messageUuid = pending.clientMessageUuid,
-            )
-
-            outboxRepository.deletePendingMessage(localMessageId)
-
-            reloadMessages(
-                markDelivered = false,
-                markRead = false,
-            )
-            conversationsRefreshBus.requestRefresh()
-        } catch (e: Exception) {
-            outboxRepository.markFailed(
-                localMessageId = localMessageId,
-                errorMessage = e.message ?: "Не удалось отправить сообщение",
-            )
         }
     }
 
