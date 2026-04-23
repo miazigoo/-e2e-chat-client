@@ -4,6 +4,8 @@ import com.example.securechatapp.core.crypto.DevCryptoEngine
 import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.*
+import com.example.securechatapp.core.crypto.SecureMessageAttachmentRef
+import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +37,7 @@ class BackendRepository @Inject constructor(
         val deliveredAt: String? = null,
         val readAt: String? = null,
         val hasAttachments: Boolean = false,
+        val attachmentIds: List<Int> = emptyList(),
     )
 
     data class AttachmentUi(
@@ -115,15 +118,18 @@ class BackendRepository @Inject constructor(
         return safe { api.listMessages(conversationId = conversationId).data }
             .items
             .sortedBy { it.messageId }
-            .map {
+            .map { dto ->
+                val decoded = decodeEncryptedMessagePayload(dto.ciphertext)
+
                 MessageUi(
-                    messageId = it.messageId,
-                    text = crypto.decryptToPlainText(it.ciphertext),
-                    isMine = it.senderUserId != peerUserId,
-                    createdAt = it.serverReceivedAt,
-                    deliveredAt = it.deliveredAt,
-                    readAt = it.readAt,
-                    hasAttachments = it.hasAttachments,
+                    messageId = dto.messageId,
+                    text = decoded.text,
+                    isMine = dto.senderUserId != peerUserId,
+                    createdAt = dto.serverReceivedAt,
+                    deliveredAt = dto.deliveredAt,
+                    readAt = dto.readAt,
+                    hasAttachments = dto.hasAttachments || decoded.attachmentIds.isNotEmpty(),
+                    attachmentIds = decoded.attachmentIds,
                 )
             }
     }
@@ -172,13 +178,24 @@ class BackendRepository @Inject constructor(
         plainText: String,
         attachmentIds: List<Int> = emptyList(),
     ) {
-        val finalText = when {
-            plainText.isNotBlank() -> plainText
-            attachmentIds.isNotEmpty() -> "[attachment]"
-            else -> error("Нельзя отправить пустое сообщение")
+        val distinctAttachmentIds = attachmentIds.distinct()
+
+        if (plainText.isBlank() && distinctAttachmentIds.isEmpty()) {
+            error("Нельзя отправить пустое сообщение")
         }
 
-        val encrypted = crypto.encryptPlainText(finalText)
+        val payloadJson = buildEncryptedMessagePayload(
+            plainText = plainText,
+            attachmentIds = distinctAttachmentIds,
+        )
+
+        val encrypted = crypto.encryptPlainText(payloadJson)
+
+        val messageType = if (distinctAttachmentIds.isNotEmpty() && plainText.isBlank()) {
+            "file"
+        } else {
+            "text"
+        }
 
         safe {
             api.sendMessage(
@@ -186,10 +203,11 @@ class BackendRepository @Inject constructor(
                     conversationId = conversationId,
                     recipientUserId = recipientUserId,
                     messageUuid = UUID.randomUUID().toString(),
+                    messageType = messageType,
                     ciphertext = encrypted.ciphertext,
                     nonce = encrypted.nonce,
                     clientCreatedAt = crypto.nowIso(),
-                    attachmentIds = attachmentIds.distinct(),
+                    attachmentIds = distinctAttachmentIds,
                 )
             )
         }
@@ -330,4 +348,60 @@ class BackendRepository @Inject constructor(
             else -> "attachment_$attachmentId"
         }
     }
+
+    private data class DecodedMessagePayload(
+        val text: String,
+        val attachmentIds: List<Int>,
+    )
+
+    private fun buildEncryptedMessagePayload(
+        plainText: String,
+        attachmentIds: List<Int>,
+    ): String {
+        val payload = SecureMessagePayloadV1(
+            text = plainText.takeIf { it.isNotBlank() },
+            attachments = attachmentIds.distinct().map { attachmentId ->
+                SecureMessageAttachmentRef(attachmentId = attachmentId)
+            },
+        )
+
+        return json.encodeToString(
+            SecureMessagePayloadV1.serializer(),
+            payload,
+        )
+    }
+
+    private fun decodeEncryptedMessagePayload(
+        ciphertext: String,
+    ): DecodedMessagePayload {
+        val decrypted = crypto.decryptToPlainText(ciphertext)
+
+        val payload = runCatching {
+            json.decodeFromString(
+                SecureMessagePayloadV1.serializer(),
+                decrypted,
+            )
+        }.getOrNull()
+
+        if (payload == null || payload.schema != SecureMessagePayloadV1.SCHEMA) {
+            return DecodedMessagePayload(
+                text = decrypted,
+                attachmentIds = emptyList(),
+            )
+        }
+
+        val attachmentIds = payload.attachments
+            .map { it.attachmentId }
+            .distinct()
+
+        val text = payload.text
+            ?.takeIf { it.isNotBlank() }
+            ?: if (attachmentIds.isNotEmpty()) "[attachment]" else ""
+
+        return DecodedMessagePayload(
+            text = text,
+            attachmentIds = attachmentIds,
+        )
+    }
+
 }

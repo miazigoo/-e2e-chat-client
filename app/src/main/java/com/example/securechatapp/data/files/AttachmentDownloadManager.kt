@@ -1,14 +1,24 @@
 package com.example.securechatapp.data.files
 
 import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Environment
 import android.webkit.MimeTypeMap
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 
 enum class AttachmentLocalState {
     NOT_DOWNLOADED,
@@ -17,16 +27,53 @@ enum class AttachmentLocalState {
     FAILED,
 }
 
+data class AttachmentDownloadEvent(
+    val attachmentId: Int,
+    val state: AttachmentLocalState,
+)
+
 @Singleton
 class AttachmentDownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val _events = MutableSharedFlow<AttachmentDownloadEvent>(extraBufferCapacity = 32)
+    val events: SharedFlow<AttachmentDownloadEvent> = _events.asSharedFlow()
 
     private val downloadManager: DownloadManager
         get() = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
     private val prefs by lazy {
         context.getSharedPreferences("attachment_downloads", Context.MODE_PRIVATE)
+    }
+
+    private var receiverRegistered = false
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+
+            val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (downloadId <= 0L) return
+
+            val attachmentId = getAttachmentIdByDownloadId(downloadId) ?: return
+            val state = getAttachmentState(attachmentId)
+
+            scope.launch {
+                _events.emit(
+                    AttachmentDownloadEvent(
+                        attachmentId = attachmentId,
+                        state = state,
+                    )
+                )
+            }
+        }
+    }
+
+    init {
+        ensureReceiverRegistered()
     }
 
     fun enqueueDownload(
@@ -61,13 +108,23 @@ class AttachmentDownloadManager @Inject constructor(
             fileName = finalFileName,
             mimeType = mimeType,
         )
+
+        scope.launch {
+            _events.emit(
+                AttachmentDownloadEvent(
+                    attachmentId = attachmentId,
+                    state = AttachmentLocalState.DOWNLOADING,
+                )
+            )
+        }
+
         return downloadId
     }
 
     fun getAttachmentState(attachmentId: Int): AttachmentLocalState {
         val record = getRecord(attachmentId) ?: return AttachmentLocalState.NOT_DOWNLOADED
         val status = queryDownloadStatus(record.downloadId) ?: run {
-            clearRecord(attachmentId)
+            clearRecord(attachmentId, record.downloadId)
             return AttachmentLocalState.NOT_DOWNLOADED
         }
 
@@ -107,6 +164,18 @@ class AttachmentDownloadManager @Inject constructor(
         return true
     }
 
+    private fun ensureReceiverRegistered() {
+        if (receiverRegistered) return
+
+        ContextCompat.registerReceiver(
+            context,
+            downloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        receiverRegistered = true
+    }
+
     private fun queryDownloadStatus(downloadId: Long): Int? {
         val query = DownloadManager.Query().setFilterById(downloadId)
         downloadManager.query(query).use { cursor ->
@@ -127,6 +196,7 @@ class AttachmentDownloadManager @Inject constructor(
             .putLong(keyDownloadId(attachmentId), downloadId)
             .putString(keyFileName(attachmentId), fileName)
             .putString(keyMimeType(attachmentId), mimeType)
+            .putInt(keyAttachmentIdByDownloadId(downloadId), attachmentId)
             .apply()
     }
 
@@ -141,17 +211,28 @@ class AttachmentDownloadManager @Inject constructor(
         )
     }
 
-    private fun clearRecord(attachmentId: Int) {
-        prefs.edit()
-            .remove(keyDownloadId(attachmentId))
-            .remove(keyFileName(attachmentId))
-            .remove(keyMimeType(attachmentId))
-            .apply()
+    private fun getAttachmentIdByDownloadId(downloadId: Long): Int? {
+        val value = prefs.getInt(keyAttachmentIdByDownloadId(downloadId), -1)
+        return value.takeIf { it > 0 }
+    }
+
+    private fun clearRecord(attachmentId: Int, downloadId: Long? = null) {
+        val resolvedDownloadId = downloadId ?: prefs.getLong(keyDownloadId(attachmentId), -1L)
+
+        prefs.edit().apply {
+            remove(keyDownloadId(attachmentId))
+            remove(keyFileName(attachmentId))
+            remove(keyMimeType(attachmentId))
+            if (resolvedDownloadId > 0L) {
+                remove(keyAttachmentIdByDownloadId(resolvedDownloadId))
+            }
+        }.apply()
     }
 
     private fun keyDownloadId(attachmentId: Int) = "attachment_download_id_$attachmentId"
     private fun keyFileName(attachmentId: Int) = "attachment_file_name_$attachmentId"
     private fun keyMimeType(attachmentId: Int) = "attachment_mime_type_$attachmentId"
+    private fun keyAttachmentIdByDownloadId(downloadId: Long) = "download_attachment_id_$downloadId"
 
     private fun buildDownloadFileName(
         fileName: String,

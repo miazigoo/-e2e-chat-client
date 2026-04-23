@@ -10,6 +10,7 @@ import com.example.securechatapp.data.remote.dto.UserSearchItemDto
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.BackendRepository
+import com.example.securechatapp.data.files.AttachmentDownloadEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -61,6 +62,7 @@ class ChatsViewModel @Inject constructor(
 
     init {
         observeRealtimeEvents()
+        observeAttachmentDownloadEvents()
         refreshConversations()
         startHeartbeat()
         startWsPing()
@@ -322,6 +324,45 @@ class ChatsViewModel @Inject constructor(
                     }
 
                     else -> Unit
+                }
+            }
+        }
+    }
+
+    private fun observeAttachmentDownloadEvents() {
+        viewModelScope.launch {
+            attachmentDownloadManager.events.collect { event: AttachmentDownloadEvent ->
+                _state.value = _state.value.copy(
+                    attachmentLocalStates = _state.value.attachmentLocalStates + (
+                            event.attachmentId to event.state
+                            )
+                )
+
+                when (event.state) {
+                    AttachmentLocalState.DOWNLOADED -> {
+                        _state.value = _state.value.copy(
+                            downloadingAttachmentId = if (_state.value.downloadingAttachmentId == event.attachmentId) {
+                                null
+                            } else {
+                                _state.value.downloadingAttachmentId
+                            },
+                            info = "Файл скачан",
+                        )
+                    }
+
+                    AttachmentLocalState.FAILED -> {
+                        _state.value = _state.value.copy(
+                            downloadingAttachmentId = if (_state.value.downloadingAttachmentId == event.attachmentId) {
+                                null
+                            } else {
+                                _state.value.downloadingAttachmentId
+                            },
+                            error = "Не удалось скачать файл",
+                        )
+                    }
+
+                    AttachmentLocalState.DOWNLOADING,
+                    AttachmentLocalState.NOT_DOWNLOADED -> Unit
                 }
             }
         }
