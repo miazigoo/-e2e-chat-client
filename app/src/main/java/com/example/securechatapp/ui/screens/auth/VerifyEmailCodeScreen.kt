@@ -1,17 +1,24 @@
 package com.example.securechatapp.ui.screens.auth
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.ui.components.TelegramAuthScaffold
+import com.example.securechatapp.ui.components.TelegramStatusCard
 import com.example.securechatapp.ui.viewmodel.AuthUiState
 
 @Composable
@@ -21,44 +28,60 @@ fun VerifyEmailCodeScreen(
     onVerify: (String, String, () -> Unit) -> Unit,
     onSuccess: () -> Unit,
 ) {
-    var code by remember { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    val codeError = remember(code) { AuthInputValidator.codeError(code) }
+    val canSubmit = codeError == null && !state.isLoading
+
+    TelegramAuthScaffold(
+        title = "Подтверждение входа",
+        subtitle = "Введите код из письма",
     ) {
-        Text("Verify Email Code", style = MaterialTheme.typography.headlineMedium)
-        Text("Challenge: $challengeId")
-
-        state.debugCode?.let {
-            Text("DEBUG CODE: $it")
+        if (BuildConfig.SHOW_DEBUG_AUTH_HINTS) {
+            TelegramStatusCard(text = "Challenge: $challengeId")
+            state.debugCode?.let {
+                TelegramStatusCard(text = "DEBUG CODE: $it")
+            }
         }
 
         state.infoMessage?.let {
-            Text(it)
+            TelegramStatusCard(text = it)
+        }
+
+        state.errorMessage?.let {
+            TelegramStatusCard(text = it, isError = true)
         }
 
         OutlinedTextField(
             value = code,
-            onValueChange = { code = it },
-            label = { Text("6-digit code") },
+            onValueChange = { code = it.filter(Char::isDigit).take(6) },
+            label = { Text("Код подтверждения") },
+            supportingText = {
+                Text(codeError ?: "Шестизначный код")
+            },
+            isError = codeError != null,
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            ),
         )
-
-        state.errorMessage?.let {
-            Text(text = it, color = MaterialTheme.colorScheme.error)
-        }
 
         Button(
             onClick = {
-                onVerify(challengeId, code, onSuccess)
+                onVerify(challengeId, code.trim(), onSuccess)
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.isLoading,
+            enabled = canSubmit,
+            shape = RoundedCornerShape(18.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         ) {
-            Text(if (state.isLoading) "Verifying..." else "Verify")
+            Text(if (state.isLoading) "Проверяем..." else "Подтвердить")
         }
     }
 }

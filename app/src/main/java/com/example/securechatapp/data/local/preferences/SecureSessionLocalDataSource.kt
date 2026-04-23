@@ -29,6 +29,8 @@ class SecureSessionLocalDataSource @Inject constructor(
         const val DEVICE_UUID = "device_uuid"
     }
 
+    private val lock = Any()
+
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
@@ -41,78 +43,87 @@ class SecureSessionLocalDataSource @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
-    private val sessionStateFlow = MutableStateFlow(readSession())
+    private val sessionStateFlow = MutableStateFlow(readSessionLocked())
 
     val sessionFlow: Flow<SessionState> = sessionStateFlow.asStateFlow()
 
-    suspend fun getSessionSnapshot(): SessionState = readSession()
-
-    suspend fun getOrCreateDeviceUuid(): String {
-        val current = prefs.getString(Keys.DEVICE_UUID, null)
-        if (!current.isNullOrBlank()) return current
-
-        val generated = UUID.randomUUID().toString()
-        prefs.edit()
-            .putString(Keys.DEVICE_UUID, generated)
-            .apply()
-
-        emitLatest()
-        return generated
+    fun getSessionSnapshot(): SessionState = synchronized(lock) {
+        readSessionLocked()
     }
 
-    suspend fun saveFullSession(
+    fun getOrCreateDeviceUuid(): String = synchronized(lock) {
+        prefs.getString(Keys.DEVICE_UUID, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        val generated = UUID.randomUUID().toString()
+        val committed = prefs.edit()
+            .putString(Keys.DEVICE_UUID, generated)
+            .commit()
+
+        check(committed) { "Не удалось сохранить идентификатор устройства" }
+        emitLatestLocked()
+        generated
+    }
+
+    fun saveFullSession(
         accessToken: String,
         refreshToken: String,
         deviceUuid: String,
-    ) {
-        prefs.edit()
+    ) = synchronized(lock) {
+        val committed = prefs.edit()
             .putString(Keys.ACCESS_TOKEN, accessToken)
             .putString(Keys.REFRESH_TOKEN, refreshToken)
             .putString(Keys.DEVICE_UUID, deviceUuid)
-            .apply()
+            .commit()
 
-        emitLatest()
+        check(committed) { "Не удалось сохранить сессию" }
+        emitLatestLocked()
     }
 
-    suspend fun updateTokens(
+    fun updateTokens(
         accessToken: String,
         refreshToken: String,
-    ) {
-        prefs.edit()
+    ) = synchronized(lock) {
+        val committed = prefs.edit()
             .putString(Keys.ACCESS_TOKEN, accessToken)
             .putString(Keys.REFRESH_TOKEN, refreshToken)
-            .apply()
+            .commit()
 
-        emitLatest()
+        check(committed) { "Не удалось обновить токены" }
+        emitLatestLocked()
     }
 
-    suspend fun saveDeviceUuid(deviceUuid: String) {
-        prefs.edit()
+    fun saveDeviceUuid(deviceUuid: String) = synchronized(lock) {
+        val committed = prefs.edit()
             .putString(Keys.DEVICE_UUID, deviceUuid)
-            .apply()
+            .commit()
 
-        emitLatest()
+        check(committed) { "Не удалось сохранить идентификатор устройства" }
+        emitLatestLocked()
     }
 
-    suspend fun clearSession(keepDeviceUuid: Boolean = true) {
+    fun clearSession(keepDeviceUuid: Boolean = true) = synchronized(lock) {
         val currentDeviceUuid = if (keepDeviceUuid) {
             prefs.getString(Keys.DEVICE_UUID, null)
         } else {
             null
         }
 
-        prefs.edit().clear().apply()
+        val cleared = prefs.edit().clear().commit()
+        check(cleared) { "Не удалось очистить сессию" }
 
         if (!currentDeviceUuid.isNullOrBlank()) {
-            prefs.edit()
+            val restored = prefs.edit()
                 .putString(Keys.DEVICE_UUID, currentDeviceUuid)
-                .apply()
+                .commit()
+            check(restored) { "Не удалось восстановить идентификатор устройства" }
         }
 
-        emitLatest()
+        emitLatestLocked()
     }
 
-    private fun readSession(): SessionState {
+    private fun readSessionLocked(): SessionState {
         return SessionState(
             accessToken = prefs.getString(Keys.ACCESS_TOKEN, null),
             refreshToken = prefs.getString(Keys.REFRESH_TOKEN, null),
@@ -120,7 +131,7 @@ class SecureSessionLocalDataSource @Inject constructor(
         )
     }
 
-    private fun emitLatest() {
-        sessionStateFlow.value = readSession()
+    private fun emitLatestLocked() {
+        sessionStateFlow.value = readSessionLocked()
     }
 }

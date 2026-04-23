@@ -11,6 +11,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -36,7 +37,7 @@ object NetworkModule {
     fun provideHttpLoggingInterceptor(): HttpLoggingInterceptor =
         HttpLoggingInterceptor().apply {
             level = if (BuildConfig.ENABLE_HTTP_LOGGING) {
-                HttpLoggingInterceptor.Level.BODY
+                HttpLoggingInterceptor.Level.BASIC
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
@@ -67,6 +68,11 @@ object NetworkModule {
         authAuthenticator: AuthAuthenticator,
     ): OkHttpClient {
         return OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .pingInterval(30, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
             .addInterceptor(loggingInterceptor)
             .authenticator(authAuthenticator)

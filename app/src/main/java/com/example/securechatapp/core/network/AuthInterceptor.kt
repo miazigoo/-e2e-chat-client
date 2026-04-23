@@ -3,7 +3,6 @@ package com.example.securechatapp.core.network
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -14,19 +13,19 @@ class AuthInterceptor @Inject constructor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
-        val session = runBlocking { sessionLocalDataSource.getSessionSnapshot() }
+        val session = sessionLocalDataSource.getSessionSnapshot()
 
         val builder = original.newBuilder()
 
-        session?.accessToken?.takeIf { it.isNotBlank() }?.let {
+        session.accessToken?.takeIf { it.isNotBlank() }?.let { accessToken ->
             if (original.header("Authorization").isNullOrBlank()) {
-                builder.header("Authorization", "Bearer $it")
+                builder.header("Authorization", "Bearer $accessToken")
             }
         }
 
-        session?.deviceUuid?.takeIf { it.isNotBlank() }?.let {
+        session.deviceUuid?.takeIf { it.isNotBlank() }?.let { deviceUuid ->
             if (original.header("X-Device-UUID").isNullOrBlank()) {
-                builder.header("X-Device-UUID", it)
+                builder.header("X-Device-UUID", deviceUuid)
             }
         }
 

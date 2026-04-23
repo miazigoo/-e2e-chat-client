@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +31,7 @@ fun TelegramAuthScaffold(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background),
     ) {
         Column(
             modifier = Modifier
@@ -50,10 +51,17 @@ fun TelegramAuthScaffold(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize(),
                 ) {
+                    Surface(
+                        modifier = Modifier.size(46.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
+                    ) {}
+
                     Text(
-                        text = "✈",
-                        style = MaterialTheme.typography.headlineMedium,
+                        text = "SC",
+                        style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }

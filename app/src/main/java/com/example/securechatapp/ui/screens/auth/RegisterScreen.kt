@@ -12,7 +12,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -27,10 +32,18 @@ fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var nickname by remember { mutableStateOf("@alice") }
-    var password by remember { mutableStateOf("supersecret123") }
-    var email by remember { mutableStateOf("") }
-    var email2fa by remember { mutableStateOf(false) }
+    var nickname by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var email2fa by rememberSaveable { mutableStateOf(false) }
+
+    val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
+    val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
+    val emailError = remember(email) { AuthInputValidator.emailError(email) }
+    val canSubmit = nicknameError == null &&
+        passwordError == null &&
+        emailError == null &&
+        !state.isLoading
 
     TelegramAuthScaffold(
         title = "Создать аккаунт",
@@ -41,6 +54,10 @@ fun RegisterScreen(
             onValueChange = { nickname = it },
             label = { Text("Никнейм") },
             placeholder = { Text("@username") },
+            supportingText = {
+                Text(nicknameError ?: "Никнейм будет виден собеседникам")
+            },
+            isError = nicknameError != null,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -54,6 +71,10 @@ fun RegisterScreen(
             value = password,
             onValueChange = { password = it },
             label = { Text("Пароль") },
+            supportingText = {
+                Text(passwordError ?: "Минимум 8 символов")
+            },
+            isError = passwordError != null,
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
@@ -68,6 +89,10 @@ fun RegisterScreen(
             value = email,
             onValueChange = { email = it },
             label = { Text("Email") },
+            supportingText = {
+                Text(emailError ?: "Необязательно. Нужен для email 2FA")
+            },
+            isError = emailError != null,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -105,7 +130,7 @@ fun RegisterScreen(
         Button(
             onClick = {
                 onRegister(
-                    nickname.trim(),
+                    AuthInputValidator.normalizeNickname(nickname),
                     password,
                     email.trim().ifBlank { null },
                     email2fa,
@@ -113,7 +138,7 @@ fun RegisterScreen(
                 )
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.isLoading,
+            enabled = canSubmit,
             shape = RoundedCornerShape(18.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,

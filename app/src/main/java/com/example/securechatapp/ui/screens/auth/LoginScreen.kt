@@ -10,10 +10,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.ui.components.TelegramAuthScaffold
 import com.example.securechatapp.ui.components.TelegramStatusCard
 import com.example.securechatapp.ui.viewmodel.AuthUiState
@@ -26,18 +32,26 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNeedVerifyCode: (String) -> Unit,
 ) {
-    var nickname by remember { mutableStateOf("@alice") }
-    var password by remember { mutableStateOf("supersecret123") }
+    var nickname by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+
+    val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
+    val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
+    val canSubmit = nicknameError == null && passwordError == null && !state.isLoading
 
     TelegramAuthScaffold(
         title = "Secure Chat",
-        subtitle = "Вход в аккаунт в стиле Telegram",
+        subtitle = "Войдите в защищённый чат",
     ) {
         OutlinedTextField(
             value = nickname,
             onValueChange = { nickname = it },
             label = { Text("Никнейм") },
             placeholder = { Text("@username") },
+            supportingText = {
+                Text(nicknameError ?: "Используй свой никнейм аккаунта")
+            },
+            isError = nicknameError != null,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -51,6 +65,10 @@ fun LoginScreen(
             value = password,
             onValueChange = { password = it },
             label = { Text("Пароль") },
+            supportingText = {
+                Text(passwordError ?: "Минимум 8 символов")
+            },
+            isError = passwordError != null,
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
@@ -70,17 +88,19 @@ fun LoginScreen(
         }
 
         state.emailMasked?.let {
-            TelegramStatusCard(text = "Код отправлен на: $it")
+            TelegramStatusCard(text = "Код отправлен на $it")
         }
 
-        state.debugCode?.let {
-            TelegramStatusCard(text = "DEBUG CODE: $it")
+        if (BuildConfig.SHOW_DEBUG_AUTH_HINTS) {
+            state.debugCode?.let {
+                TelegramStatusCard(text = "DEBUG CODE: $it")
+            }
         }
 
         Button(
             onClick = {
                 onLogin(
-                    nickname.trim(),
+                    AuthInputValidator.normalizeNickname(nickname),
                     password,
                     onNeedVerifyCode,
                     onLoginSuccess,
@@ -89,7 +109,7 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp),
-            enabled = !state.isLoading,
+            enabled = canSubmit,
             shape = RoundedCornerShape(18.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
