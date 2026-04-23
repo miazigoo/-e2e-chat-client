@@ -10,8 +10,11 @@ import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
+import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
+
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessageSendStatus
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,6 +42,7 @@ class MessageRepository @Inject constructor(
 
                 ChatMessage(
                     messageId = dto.messageId,
+                    messageUuid = dto.messageUuid,
                     text = decoded.text,
                     isMine = dto.senderUserId != peerUserId,
                     createdAt = dto.serverReceivedAt,
@@ -47,6 +51,8 @@ class MessageRepository @Inject constructor(
                     hasAttachments = dto.hasAttachments || decoded.attachments.isNotEmpty(),
                     attachmentIds = decoded.attachments.map { it.attachmentId }.distinct(),
                     attachments = decoded.attachments,
+                    sendStatus = MessageSendStatus.SENT,
+                    errorMessage = null,
                 )
             }
     }
@@ -55,7 +61,12 @@ class MessageRepository @Inject constructor(
         messages: List<ChatMessage>,
     ): Int {
         val undeliveredIncoming = messages
-            .filter { !it.isMine && it.deliveredAt == null }
+            .filter {
+                !it.isMine &&
+                        it.deliveredAt == null &&
+                        it.sendStatus == MessageSendStatus.SENT &&
+                        it.messageId > 0
+            }
             .distinctBy { it.messageId }
 
         undeliveredIncoming.forEach { message ->
@@ -74,7 +85,12 @@ class MessageRepository @Inject constructor(
         messages: List<ChatMessage>,
     ): Int {
         val unreadIncoming = messages
-            .filter { !it.isMine && it.readAt == null }
+            .filter {
+                !it.isMine &&
+                        it.readAt == null &&
+                        it.sendStatus == MessageSendStatus.SENT &&
+                        it.messageId > 0
+            }
             .distinctBy { it.messageId }
 
         unreadIncoming.forEach { message ->
@@ -95,7 +111,8 @@ class MessageRepository @Inject constructor(
         plainText: String,
         attachmentIds: List<Int> = emptyList(),
         attachmentDescriptors: List<EncryptedAttachmentDescriptor> = emptyList(),
-    ) {
+        messageUuid: String = UUID.randomUUID().toString(),
+    ): SendMessageResponseDto {
         val normalizedDescriptors = if (attachmentDescriptors.isNotEmpty()) {
             attachmentDescriptors
                 .filter { it.attachmentId > 0 }
@@ -131,19 +148,19 @@ class MessageRepository @Inject constructor(
             "text"
         }
 
-        safe {
+        return safe {
             api.sendMessage(
                 SendMessageRequestDto(
                     conversationId = conversationId,
                     recipientUserId = recipientUserId,
-                    messageUuid = UUID.randomUUID().toString(),
+                    messageUuid = messageUuid,
                     messageType = messageType,
                     ciphertext = encrypted.ciphertext,
                     nonce = encrypted.nonce,
                     clientCreatedAt = crypto.nowIso(),
                     attachmentIds = distinctAttachmentIds,
                 )
-            )
+            ).data
         }
     }
 
@@ -256,7 +273,11 @@ class MessageRepository @Inject constructor(
         val keyBase64 = descriptor.fileNameKeyBase64
         val nonceBase64 = descriptor.fileNameNonceBase64
 
-        if (ciphertextBase64.isNullOrBlank() || keyBase64.isNullOrBlank() || nonceBase64.isNullOrBlank()) {
+        if (
+            ciphertextBase64.isNullOrBlank() ||
+            keyBase64.isNullOrBlank() ||
+            nonceBase64.isNullOrBlank()
+        ) {
             return null
         }
 

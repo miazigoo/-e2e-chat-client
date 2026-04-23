@@ -15,21 +15,25 @@ import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.AttachmentRepository
 import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
+import com.example.securechatapp.data.repository.MessageRepository
+import com.example.securechatapp.data.repository.OutboxRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.SyncRepository
-import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationEventTypes
 import com.example.securechatapp.domain.model.ConversationSyncEvent
+import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -69,6 +73,7 @@ class ConversationViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val attachmentRepository: AttachmentRepository,
     private val chatCacheRepository: ChatCacheRepository,
+    private val outboxRepository: OutboxRepository,
     private val syncRepository: SyncRepository,
     private val sessionRepository: SessionRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
@@ -87,12 +92,12 @@ class ConversationViewModel @Inject constructor(
     )
     val state: StateFlow<ConversationUiState> = _state.asStateFlow()
 
-    private var syncFallbackJob: Job? = null
+    private var outboxFallbackJob: Job? = null
     private val syncMutex = Mutex()
 
     init {
         observeCachedConversation()
-        observeCachedMessages()
+        observeMergedMessages()
         observeRealtimeEvents()
         observeAttachmentDownloadEvents()
         loadConversation()
@@ -112,13 +117,13 @@ class ConversationViewModel @Inject constructor(
         if (text.isBlank() && attachmentUri == null) return
 
         viewModelScope.launch {
-            runCatching {
-                _state.value = _state.value.copy(
-                    error = null,
-                    info = null,
-                    isUploadingAttachment = attachmentUri != null,
-                )
+            _state.value = _state.value.copy(
+                error = null,
+                info = null,
+                isUploadingAttachment = attachmentUri != null,
+            )
 
+            try {
                 val uploadedEncryptedAttachments = if (attachmentUri != null) {
                     listOf(
                         attachmentUploadManager.uploadSingleEncryptedAttachment(
@@ -130,7 +135,7 @@ class ConversationViewModel @Inject constructor(
                     emptyList()
                 }
 
-                messageRepository.sendMessage(
+                outboxRepository.enqueuePendingMessage(
                     conversationId = currentConversationId,
                     recipientUserId = peerUserId,
                     plainText = text,
@@ -138,25 +143,46 @@ class ConversationViewModel @Inject constructor(
                     attachmentDescriptors = uploadedEncryptedAttachments.map { it.descriptor },
                 )
 
-                _state.value = _state.value.copy(isUploadingAttachment = false)
-
-                reloadMessages(
-                    markDelivered = false,
-                    markRead = false,
-                )
-                conversationsRefreshBus.requestRefresh()
-                onSent()
-            }.onFailure {
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
-                    error = it.message,
+                )
+
+                dispatchQueuedMessages()
+                onSent()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isUploadingAttachment = false,
+                    error = e.message ?: "Не удалось подготовить сообщение",
                 )
             }
         }
     }
 
+    fun retryFailedMessage(messageId: Int) {
+        if (messageId >= 0) return
+
+        viewModelScope.launch {
+            outboxRepository.requeueFailedMessage(messageId)
+            dispatchQueuedMessages()
+        }
+    }
+
+    fun removePendingMessage(messageId: Int) {
+        if (messageId >= 0) return
+
+        viewModelScope.launch {
+            outboxRepository.deletePendingMessage(messageId)
+        }
+    }
+
     fun deleteMessageLocal(messageId: Int) {
         val currentConversationId = _state.value.conversationId ?: return
+
+        if (messageId < 0) {
+            removePendingMessage(messageId)
+            return
+        }
+
         mutateDeleting(messageId, true)
 
         viewModelScope.launch {
@@ -180,6 +206,8 @@ class ConversationViewModel @Inject constructor(
 
     fun deleteMessageGlobal(messageId: Int) {
         val currentConversationId = _state.value.conversationId ?: return
+        if (messageId < 0) return
+
         mutateDeleting(messageId, true)
 
         viewModelScope.launch {
@@ -330,7 +358,7 @@ class ConversationViewModel @Inject constructor(
                 error = null,
             )
 
-            syncFallbackJob?.cancel()
+            outboxFallbackJob?.cancel()
             realtimeWebSocketManager.disconnect()
             sessionRepository.logoutSession()
 
@@ -341,16 +369,17 @@ class ConversationViewModel @Inject constructor(
 
     private fun loadConversation() {
         viewModelScope.launch {
-            runCatching {
-                _state.value = _state.value.copy(
-                    isLoading = true,
-                    error = null,
-                    info = null,
-                )
+            _state.value = _state.value.copy(
+                isLoading = true,
+                error = null,
+                info = null,
+            )
 
+            try {
                 val conversation = conversationRepository.getConversation(conversationId)
                 chatCacheRepository.upsertConversationDetails(conversation)
 
+                outboxRepository.requeueSendingMessages(conversationId)
                 catchUpCursorToLatest()
 
                 realtimeWebSocketManager.connectIfNeeded()
@@ -361,12 +390,12 @@ class ConversationViewModel @Inject constructor(
                     markRead = true,
                 )
 
-                syncConversation()
-                startSyncFallback()
-            }.onFailure {
+                dispatchQueuedMessages()
+                startOutboxFallback()
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = it.message,
+                    error = e.message,
                 )
             }
         }
@@ -387,11 +416,19 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
-    private fun observeCachedMessages() {
+    private fun observeMergedMessages() {
         viewModelScope.launch {
-            chatCacheRepository.observeMessages(conversationId).collect { messages ->
+            combine(
+                chatCacheRepository.observeMessages(conversationId),
+                outboxRepository.observePendingMessages(conversationId),
+            ) { sentMessages, pendingMessages ->
+                mergeMessages(
+                    sentMessages = sentMessages,
+                    pendingMessages = pendingMessages,
+                )
+            }.collect { merged ->
                 _state.value = _state.value.copy(
-                    messages = messages,
+                    messages = merged,
                 )
             }
         }
@@ -468,13 +505,57 @@ class ConversationViewModel @Inject constructor(
         _state.value = _state.value.copy(deletingMessageIds = current)
     }
 
-    private fun startSyncFallback() {
-        syncFallbackJob?.cancel()
-        syncFallbackJob = viewModelScope.launch {
+    private fun startOutboxFallback() {
+        outboxFallbackJob?.cancel()
+        outboxFallbackJob = viewModelScope.launch {
             while (isActive) {
-                delay(SYNC_FALLBACK_INTERVAL_MS)
+                dispatchQueuedMessages()
+                delay(OUTBOX_FALLBACK_INTERVAL_MS)
                 syncConversation()
             }
+        }
+    }
+
+    private fun dispatchQueuedMessages() {
+        val currentConversationId = _state.value.conversationId ?: return
+
+        viewModelScope.launch {
+            val queuedIds = outboxRepository.listQueuedMessageIds(currentConversationId)
+            queuedIds.forEach { localId ->
+                dispatchPendingMessage(localId)
+            }
+        }
+    }
+
+    private suspend fun dispatchPendingMessage(
+        localMessageId: Int,
+    ) {
+        val pending = outboxRepository.getPendingMessage(localMessageId) ?: return
+
+        try {
+            outboxRepository.markSending(localMessageId)
+
+            messageRepository.sendMessage(
+                conversationId = pending.conversationId,
+                recipientUserId = pending.recipientUserId,
+                plainText = pending.plainText,
+                attachmentIds = pending.attachmentIds,
+                attachmentDescriptors = pending.attachmentDescriptors,
+                messageUuid = pending.clientMessageUuid,
+            )
+
+            outboxRepository.deletePendingMessage(localMessageId)
+
+            reloadMessages(
+                markDelivered = false,
+                markRead = false,
+            )
+            conversationsRefreshBus.requestRefresh()
+        } catch (e: Exception) {
+            outboxRepository.markFailed(
+                localMessageId = localMessageId,
+                errorMessage = e.message ?: "Не удалось отправить сообщение",
+            )
         }
     }
 
@@ -485,7 +566,7 @@ class ConversationViewModel @Inject constructor(
             val page = syncRepository.getConversationEvents(
                 conversationId = conversationId,
                 afterEventId = cursor,
-                limit = SYNC_PAGE_SIZE,
+                limit = EVENTS_PAGE_SIZE,
             )
 
             val last = page.items.lastOrNull() ?: break
@@ -508,7 +589,7 @@ class ConversationViewModel @Inject constructor(
                 val page = syncRepository.getConversationEvents(
                     conversationId = currentConversationId,
                     afterEventId = cursor,
-                    limit = SYNC_PAGE_SIZE,
+                    limit = EVENTS_PAGE_SIZE,
                 )
 
                 val events = page.items
@@ -635,6 +716,50 @@ class ConversationViewModel @Inject constructor(
 
             conversationsRefreshBus.requestRefresh()
         }
+    }
+
+    private fun mergeMessages(
+        sentMessages: List<ChatMessage>,
+        pendingMessages: List<ChatMessage>,
+    ): List<ChatMessage> {
+        val byKey = linkedMapOf<String, ChatMessage>()
+
+        (sentMessages + pendingMessages)
+            .sortedWith(
+                compareBy<ChatMessage>(
+                    { parseMillis(it.createdAt) },
+                    { if (it.sendStatus == MessageSendStatus.SENT) 0 else 1 },
+                    { it.messageId },
+                )
+            )
+            .forEach { message ->
+                val key = message.messageUuid?.let { "uuid:$it" } ?: "id:${message.messageId}"
+                val existing = byKey[key]
+
+                if (existing == null) {
+                    byKey[key] = message
+                } else {
+                    val preferred = when {
+                        existing.sendStatus != MessageSendStatus.SENT &&
+                                message.sendStatus == MessageSendStatus.SENT -> message
+                        else -> existing
+                    }
+                    byKey[key] = preferred
+                }
+            }
+
+        return byKey.values.sortedWith(
+            compareBy<ChatMessage>(
+                { parseMillis(it.createdAt) },
+                { it.messageId },
+            )
+        )
+    }
+
+    private fun parseMillis(raw: String): Long {
+        return runCatching {
+            OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+        }.getOrDefault(Long.MAX_VALUE)
     }
 
     private fun previewImageAttachment(
@@ -854,14 +979,14 @@ class ConversationViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        syncFallbackJob?.cancel()
+        outboxFallbackJob?.cancel()
         realtimeWebSocketManager.unsubscribeConversation(conversationId)
         super.onCleared()
     }
 
     private companion object {
-        const val SYNC_PAGE_SIZE = 200
-        const val SYNC_FALLBACK_INTERVAL_MS = 20_000L
+        const val EVENTS_PAGE_SIZE = 200
+        const val OUTBOX_FALLBACK_INTERVAL_MS = 6_000L
     }
 }
 

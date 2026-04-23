@@ -6,6 +6,7 @@ import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
+import com.example.securechatapp.domain.model.MessageSendStatus
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
@@ -63,6 +64,7 @@ fun MessageCacheEntity.toDomain(
 ): ChatMessage {
     return ChatMessage(
         messageId = messageId,
+        messageUuid = messageUuid,
         text = text,
         isMine = isMine,
         createdAt = createdAt,
@@ -76,6 +78,8 @@ fun MessageCacheEntity.toDomain(
             json = json,
             raw = attachmentsJson,
         ),
+        sendStatus = MessageSendStatus.SENT,
+        errorMessage = null,
     )
 }
 
@@ -86,6 +90,7 @@ fun ChatMessage.toEntity(
     return MessageCacheEntity(
         messageId = messageId,
         conversationId = conversationId,
+        messageUuid = messageUuid,
         text = text,
         isMine = isMine,
         createdAt = createdAt,
@@ -100,7 +105,7 @@ fun ChatMessage.toEntity(
     )
 }
 
-private fun encodeAttachmentsJson(
+fun encodeAttachmentsJson(
     json: Json,
     attachments: List<AttachmentItem>,
 ): String {
@@ -110,7 +115,7 @@ private fun encodeAttachmentsJson(
     )
 }
 
-private fun decodeAttachmentsJson(
+fun decodeAttachmentsJson(
     json: Json,
     raw: String,
 ): List<AttachmentItem> {

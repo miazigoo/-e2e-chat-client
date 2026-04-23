@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.theme.TgDarkIncomingBubble
 import com.example.securechatapp.ui.theme.TgDarkOutgoingBubble
 import com.example.securechatapp.ui.theme.TgIncomingBubble
@@ -44,6 +45,8 @@ fun MessageBubble(
     onDeleteLocal: () -> Unit,
     onDeleteGlobal: () -> Unit,
     onAttachmentsClick: () -> Unit,
+    onRetrySend: () -> Unit = {},
+    onRemovePending: () -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
     val bubbleColor = when {
@@ -124,6 +127,18 @@ fun MessageBubble(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
 
+                    if (
+                        msg.sendStatus == MessageSendStatus.FAILED &&
+                        !msg.errorMessage.isNullOrBlank()
+                    ) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = msg.errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Row(
@@ -131,11 +146,6 @@ fun MessageBubble(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val statusColor = when {
-                            msg.readAt != null -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-
                         Text(
                             text = formatMessageTime(msg.createdAt),
                             style = MaterialTheme.typography.bodySmall,
@@ -144,12 +154,31 @@ fun MessageBubble(
 
                         if (msg.isMine) {
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = when {
+
+                            val statusText = when (msg.sendStatus) {
+                                MessageSendStatus.SENDING -> "⏳"
+                                MessageSendStatus.FAILED -> "⚠"
+                                MessageSendStatus.SENT -> when {
                                     msg.readAt != null -> "✓✓"
                                     msg.deliveredAt != null -> "✓✓"
                                     else -> "✓"
-                                },
+                                }
+                            }
+
+                            val statusColor = when (msg.sendStatus) {
+                                MessageSendStatus.SENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                                MessageSendStatus.FAILED -> MaterialTheme.colorScheme.error
+                                MessageSendStatus.SENT -> {
+                                    if (msg.readAt != null) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = statusText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = statusColor,
                             )
@@ -162,22 +191,42 @@ fun MessageBubble(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
             ) {
-                DropdownMenuItem(
-                    text = { Text(if (isDeleting) "Обработка..." else "Скрыть у себя") },
-                    onClick = {
-                        menuExpanded = false
-                        if (!isDeleting) onDeleteLocal()
-                    },
-                )
+                if (msg.messageId < 0) {
+                    if (msg.sendStatus == MessageSendStatus.FAILED) {
+                        DropdownMenuItem(
+                            text = { Text("Повторить") },
+                            onClick = {
+                                menuExpanded = false
+                                onRetrySend()
+                            },
+                        )
+                    }
 
-                if (msg.isMine) {
                     DropdownMenuItem(
-                        text = { Text(if (isDeleting) "Обработка..." else "Удалить у всех") },
+                        text = { Text("Удалить") },
                         onClick = {
                             menuExpanded = false
-                            if (!isDeleting) onDeleteGlobal()
+                            onRemovePending()
                         },
                     )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(if (isDeleting) "Обработка..." else "Скрыть у себя") },
+                        onClick = {
+                            menuExpanded = false
+                            if (!isDeleting) onDeleteLocal()
+                        },
+                    )
+
+                    if (msg.isMine) {
+                        DropdownMenuItem(
+                            text = { Text(if (isDeleting) "Обработка..." else "Удалить у всех") },
+                            onClick = {
+                                menuExpanded = false
+                                if (!isDeleting) onDeleteGlobal()
+                            },
+                        )
+                    }
                 }
             }
         }

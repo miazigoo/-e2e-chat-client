@@ -9,12 +9,14 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["conversationId"]),
         Index(value = ["conversationId", "messageId"]),
+        Index(value = ["messageUuid"]),
     ],
 )
 data class MessageCacheEntity(
     @PrimaryKey
     val messageId: Int,
     val conversationId: Int,
+    val messageUuid: String? = null,
     val text: String,
     val isMine: Boolean,
     val createdAt: String,

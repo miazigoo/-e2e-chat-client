@@ -28,8 +28,16 @@ data class ConversationDetails(
 )
 
 @Serializable
+enum class MessageSendStatus {
+    SENT,
+    SENDING,
+    FAILED,
+}
+
+@Serializable
 data class ChatMessage(
     val messageId: Int,
+    val messageUuid: String? = null,
     val text: String,
     val isMine: Boolean,
     val createdAt: String,
@@ -38,6 +46,8 @@ data class ChatMessage(
     val hasAttachments: Boolean = false,
     val attachmentIds: List<Int> = emptyList(),
     val attachments: List<AttachmentItem> = emptyList(),
+    val sendStatus: MessageSendStatus = MessageSendStatus.SENT,
+    val errorMessage: String? = null,
 )
 
 @Serializable

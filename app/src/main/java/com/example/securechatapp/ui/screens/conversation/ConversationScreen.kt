@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -131,7 +130,13 @@ fun ConversationScreen(
                                 onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
                                 onAttachmentsClick = {
                                     viewModel.showMessageAttachments(row.message)
-                                }
+                                },
+                                onRetrySend = {
+                                    viewModel.retryFailedMessage(row.message.messageId)
+                                },
+                                onRemovePending = {
+                                    viewModel.removePendingMessage(row.message.messageId)
+                                },
                             )
                         }
                     }
