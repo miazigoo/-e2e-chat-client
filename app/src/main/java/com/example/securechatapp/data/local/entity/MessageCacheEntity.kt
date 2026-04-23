@@ -1,0 +1,26 @@
+package com.example.securechatapp.data.local.entity
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+@Entity(
+    tableName = "messages_cache",
+    indices = [
+        Index(value = ["conversationId"]),
+        Index(value = ["conversationId", "messageId"]),
+    ],
+)
+data class MessageCacheEntity(
+    @PrimaryKey
+    val messageId: Int,
+    val conversationId: Int,
+    val text: String,
+    val isMine: Boolean,
+    val createdAt: String,
+    val deliveredAt: String? = null,
+    val readAt: String? = null,
+    val hasAttachments: Boolean = false,
+    val attachmentIdsCsv: String = "",
+    val attachmentsJson: String = "[]",
+)

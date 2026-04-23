@@ -1,10 +1,14 @@
 package com.example.securechatapp.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class UserSearchItem(
     val userId: Int,
     val nickname: String,
 )
 
+@Serializable
 data class ConversationListItem(
     val conversationId: Int,
     val title: String,
@@ -15,6 +19,7 @@ data class ConversationListItem(
     val updatedAt: String? = null,
 )
 
+@Serializable
 data class ConversationDetails(
     val conversationId: Int,
     val title: String,
@@ -22,6 +27,7 @@ data class ConversationDetails(
     val protectionMode: String,
 )
 
+@Serializable
 data class ChatMessage(
     val messageId: Int,
     val text: String,
@@ -34,6 +40,7 @@ data class ChatMessage(
     val attachments: List<AttachmentItem> = emptyList(),
 )
 
+@Serializable
 data class AttachmentItem(
     val attachmentId: Int,
     val fileName: String,

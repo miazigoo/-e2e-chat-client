@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.core.common.ConversationsRefreshBus
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
+import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.domain.model.ConversationListItem
@@ -28,6 +29,7 @@ data class ChatsUiState(
 @HiltViewModel
 class ChatsViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
+    private val chatCacheRepository: ChatCacheRepository,
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val conversationsRefreshBus: ConversationsRefreshBus,
@@ -37,6 +39,7 @@ class ChatsViewModel @Inject constructor(
     val state: StateFlow<ChatsUiState> = _state.asStateFlow()
 
     init {
+        observeCachedConversations()
         observeRefreshBus()
         observeRealtimeEvents()
         connectRealtime()
@@ -50,10 +53,12 @@ class ChatsViewModel @Inject constructor(
                     isLoading = true,
                     error = null,
                 )
+
                 val items = conversationRepository.listConversations()
+                chatCacheRepository.replaceConversations(items)
+
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    conversations = items,
                 )
             }.onFailure {
                 _state.value = _state.value.copy(
@@ -96,10 +101,10 @@ class ChatsViewModel @Inject constructor(
 
                 val conversationId = conversationRepository.createConversation(userId)
                 val items = conversationRepository.listConversations()
+                chatCacheRepository.replaceConversations(items)
 
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    conversations = items,
                     users = emptyList(),
                     error = null,
                 )
@@ -138,6 +143,16 @@ class ChatsViewModel @Inject constructor(
     private fun connectRealtime() {
         viewModelScope.launch {
             realtimeWebSocketManager.connectIfNeeded()
+        }
+    }
+
+    private fun observeCachedConversations() {
+        viewModelScope.launch {
+            chatCacheRepository.observeConversations().collect { conversations ->
+                _state.value = _state.value.copy(
+                    conversations = conversations,
+                )
+            }
         }
     }
 

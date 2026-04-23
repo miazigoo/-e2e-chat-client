@@ -13,10 +13,11 @@ import com.example.securechatapp.data.files.EncryptedAttachmentFileManager
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.AttachmentRepository
+import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
-import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.SyncRepository
+import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationEventTypes
@@ -67,6 +68,7 @@ class ConversationViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val attachmentRepository: AttachmentRepository,
+    private val chatCacheRepository: ChatCacheRepository,
     private val syncRepository: SyncRepository,
     private val sessionRepository: SessionRepository,
     private val attachmentUploadManager: AttachmentUploadManager,
@@ -76,17 +78,9 @@ class ConversationViewModel @Inject constructor(
     private val conversationsRefreshBus: ConversationsRefreshBus,
 ) : ViewModel() {
 
-    private val savedStateHandle = stateHandle
-
     private val conversationId: Int = checkNotNull(
-        savedStateHandle.get<Int>(Routes.ConversationArg)
+        stateHandle.get<Int>(Routes.ConversationArg)
     )
-
-    private var lastEventId: Int?
-        get() = savedStateHandle.get<Int>(KEY_LAST_EVENT_ID)
-        set(value) {
-            savedStateHandle[KEY_LAST_EVENT_ID] = value
-        }
 
     private val _state = MutableStateFlow(
         ConversationUiState(conversationId = conversationId)
@@ -97,6 +91,8 @@ class ConversationViewModel @Inject constructor(
     private val syncMutex = Mutex()
 
     init {
+        observeCachedConversation()
+        observeCachedMessages()
         observeRealtimeEvents()
         observeAttachmentDownloadEvents()
         loadConversation()
@@ -353,14 +349,7 @@ class ConversationViewModel @Inject constructor(
                 )
 
                 val conversation = conversationRepository.getConversation(conversationId)
-
-                _state.value = _state.value.copy(
-                    conversationId = conversation.conversationId,
-                    title = conversation.title,
-                    peerUserId = conversation.peerUserId,
-                    protectionMode = conversation.protectionMode,
-                    messages = emptyList(),
-                )
+                chatCacheRepository.upsertConversationDetails(conversation)
 
                 catchUpCursorToLatest()
 
@@ -378,6 +367,31 @@ class ConversationViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = it.message,
+                )
+            }
+        }
+    }
+
+    private fun observeCachedConversation() {
+        viewModelScope.launch {
+            chatCacheRepository.observeConversationDetails(conversationId).collect { details ->
+                if (details != null) {
+                    _state.value = _state.value.copy(
+                        conversationId = details.conversationId,
+                        title = details.title,
+                        peerUserId = details.peerUserId,
+                        protectionMode = details.protectionMode,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun observeCachedMessages() {
+        viewModelScope.launch {
+            chatCacheRepository.observeMessages(conversationId).collect { messages ->
+                _state.value = _state.value.copy(
+                    messages = messages,
                 )
             }
         }
@@ -465,7 +479,7 @@ class ConversationViewModel @Inject constructor(
     }
 
     private suspend fun catchUpCursorToLatest() {
-        var cursor = lastEventId
+        var cursor = chatCacheRepository.getLastEventId(conversationId)
 
         while (true) {
             val page = syncRepository.getConversationEvents(
@@ -476,7 +490,7 @@ class ConversationViewModel @Inject constructor(
 
             val last = page.items.lastOrNull() ?: break
             cursor = last.eventId
-            lastEventId = last.eventId
+            chatCacheRepository.setLastEventId(conversationId, last.eventId)
 
             if (!page.hasMore) break
         }
@@ -486,7 +500,7 @@ class ConversationViewModel @Inject constructor(
         val currentConversationId = _state.value.conversationId ?: return
 
         syncMutex.withLock {
-            var cursor = lastEventId
+            var cursor = chatCacheRepository.getLastEventId(currentConversationId)
             var requiresReload = false
             var processedAnyEvents = false
 
@@ -504,7 +518,7 @@ class ConversationViewModel @Inject constructor(
 
                 events.forEach { event ->
                     cursor = event.eventId
-                    lastEventId = event.eventId
+                    chatCacheRepository.setLastEventId(currentConversationId, event.eventId)
                     requiresReload = processConversationEvent(event) || requiresReload
                 }
 
@@ -524,7 +538,7 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
-    private fun processConversationEvent(
+    private suspend fun processConversationEvent(
         event: ConversationSyncEvent,
     ): Boolean {
         return when (event.eventType) {
@@ -533,7 +547,7 @@ class ConversationViewModel @Inject constructor(
                 val deliveredAt = event.payload?.stringValue("delivered_at") ?: event.createdAt
 
                 if (messageId != null) {
-                    applyDeliveredLocally(
+                    chatCacheRepository.markMessageDelivered(
                         messageId = messageId,
                         deliveredAt = deliveredAt,
                     )
@@ -546,7 +560,7 @@ class ConversationViewModel @Inject constructor(
                 val readAt = event.payload?.stringValue("read_at") ?: event.createdAt
 
                 if (messageId != null) {
-                    applyReadLocally(
+                    chatCacheRepository.markMessageRead(
                         messageId = messageId,
                         readAt = readAt,
                     )
@@ -574,57 +588,6 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
-    private fun applyDeliveredLocally(
-        messageId: Int,
-        deliveredAt: String,
-    ) {
-        var changed = false
-
-        val updated = _state.value.messages.map { message ->
-            if (message.messageId != messageId) return@map message
-
-            val nextDeliveredAt = message.deliveredAt ?: deliveredAt
-            if (nextDeliveredAt == message.deliveredAt) {
-                message
-            } else {
-                changed = true
-                message.copy(deliveredAt = nextDeliveredAt)
-            }
-        }
-
-        if (changed) {
-            _state.value = _state.value.copy(messages = updated)
-        }
-    }
-
-    private fun applyReadLocally(
-        messageId: Int,
-        readAt: String,
-    ) {
-        var changed = false
-
-        val updated = _state.value.messages.map { message ->
-            if (message.messageId != messageId) return@map message
-
-            val nextDeliveredAt = message.deliveredAt ?: readAt
-            val nextReadAt = message.readAt ?: readAt
-
-            if (nextDeliveredAt == message.deliveredAt && nextReadAt == message.readAt) {
-                message
-            } else {
-                changed = true
-                message.copy(
-                    deliveredAt = nextDeliveredAt,
-                    readAt = nextReadAt,
-                )
-            }
-        }
-
-        if (changed) {
-            _state.value = _state.value.copy(messages = updated)
-        }
-    }
-
     private suspend fun reloadMessages(
         markDelivered: Boolean,
         markRead: Boolean,
@@ -637,9 +600,13 @@ class ConversationViewModel @Inject constructor(
             peerUserId = peerUserId,
         )
 
+        chatCacheRepository.replaceMessages(
+            conversationId = currentConversationId,
+            messages = messages,
+        )
+
         _state.value = _state.value.copy(
             isLoading = false,
-            messages = messages,
             error = null,
         )
 
@@ -661,9 +628,11 @@ class ConversationViewModel @Inject constructor(
                 peerUserId = peerUserId,
             )
 
-            _state.value = _state.value.copy(
+            chatCacheRepository.replaceMessages(
+                conversationId = currentConversationId,
                 messages = refreshedMessages,
             )
+
             conversationsRefreshBus.requestRefresh()
         }
     }
@@ -891,7 +860,6 @@ class ConversationViewModel @Inject constructor(
     }
 
     private companion object {
-        const val KEY_LAST_EVENT_ID = "last_event_id"
         const val SYNC_PAGE_SIZE = 200
         const val SYNC_FALLBACK_INTERVAL_MS = 20_000L
     }
