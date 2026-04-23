@@ -3,7 +3,7 @@ package com.example.securechatapp.ui.viewmodel
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
 import com.example.securechatapp.data.repository.SessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,7 +40,7 @@ data class SettingsUiState(
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
     private val themePreferenceDataSource: ThemePreferenceDataSource,
     private val sessionRepository: SessionRepository,
 ) : ViewModel() {

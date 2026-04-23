@@ -1,7 +1,7 @@
 package com.example.securechatapp.app.di
 
-import com.example.securechatapp.core.crypto.DevCryptoEngine
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.crypto.engine.CryptoEngine
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.repository.AuthRepositoryImpl
 import com.example.securechatapp.domain.repository.AuthRepository
@@ -20,8 +20,8 @@ object RepositoryModule {
     @Singleton
     fun provideAuthRepository(
         authApi: AuthApi,
-        sessionLocalDataSource: SessionLocalDataSource,
-        crypto: DevCryptoEngine,
+        sessionLocalDataSource: SecureSessionLocalDataSource,
+        crypto: CryptoEngine,
         json: Json,
     ): AuthRepository = AuthRepositoryImpl(
         authApi = authApi,

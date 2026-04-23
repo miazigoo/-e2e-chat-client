@@ -1,7 +1,7 @@
 package com.example.securechatapp.data.remote.websocket
 
 import com.example.securechatapp.BuildConfig
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +40,7 @@ sealed interface RealtimeEvent {
 @Singleton
 class RealtimeWebSocketManager @Inject constructor(
     private val okHttpClient: OkHttpClient,
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
     private val json: Json,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

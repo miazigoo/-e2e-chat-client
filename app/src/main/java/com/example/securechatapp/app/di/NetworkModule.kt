@@ -3,7 +3,7 @@ package com.example.securechatapp.app.di
 import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.core.network.AuthAuthenticator
 import com.example.securechatapp.core.network.AuthInterceptor
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -45,13 +45,13 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideAuthInterceptor(
-        sessionLocalDataSource: SessionLocalDataSource,
+        sessionLocalDataSource: SecureSessionLocalDataSource,
     ): AuthInterceptor = AuthInterceptor(sessionLocalDataSource)
 
     @Provides
     @Singleton
     fun provideAuthAuthenticator(
-        sessionLocalDataSource: SessionLocalDataSource,
+        sessionLocalDataSource: SecureSessionLocalDataSource,
         json: Json,
     ): AuthAuthenticator = AuthAuthenticator(
         baseUrl = BuildConfig.API_BASE_URL,

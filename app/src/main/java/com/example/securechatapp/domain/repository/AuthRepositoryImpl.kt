@@ -1,10 +1,10 @@
 package com.example.securechatapp.data.repository
 
 import android.os.Build
-import com.example.securechatapp.core.crypto.DevCryptoEngine
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.crypto.engine.CryptoEngine
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
 import com.example.securechatapp.data.remote.dto.auth.LoginRequestDto
@@ -19,10 +19,11 @@ import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
+
 class AuthRepositoryImpl @Inject constructor(
     private val authApi: AuthApi,
-    private val sessionLocalDataSource: SessionLocalDataSource,
-    private val crypto: DevCryptoEngine,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
+    private val crypto: CryptoEngine,
     private val json: Json,
 ) : AuthRepository {
 

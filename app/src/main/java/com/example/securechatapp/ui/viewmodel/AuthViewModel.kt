@@ -3,7 +3,7 @@ package com.example.securechatapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.core.result.AppResult
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.domain.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -25,7 +25,7 @@ data class AuthUiState(
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())

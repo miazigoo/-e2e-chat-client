@@ -1,7 +1,6 @@
 package com.example.securechatapp.crypto
 
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.yourapp.data.crypto.RealCryptoEngine
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

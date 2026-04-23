@@ -1,6 +1,6 @@
 package com.example.securechatapp.data.repository
 
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenRequestDto
 import javax.inject.Inject
@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 @Singleton
 class SessionRepository @Inject constructor(
     private val api: ChatBackendApi,
-    private val sessionStore: SessionLocalDataSource,
+    private val sessionStore: SecureSessionLocalDataSource,
     json: Json,
 ) : BaseApiRepository(json) {
 

@@ -1,9 +1,9 @@
 package com.example.securechatapp.data.repository
 
 import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
-import com.example.securechatapp.core.crypto.DevCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
+import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
@@ -11,7 +11,6 @@ import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
-
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessageSendStatus
@@ -23,7 +22,7 @@ import kotlinx.serialization.json.Json
 @Singleton
 class MessageRepository @Inject constructor(
     private val api: ChatBackendApi,
-    private val crypto: DevCryptoEngine,
+    private val crypto: CryptoEngine,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
     json: Json,
 ) : BaseApiRepository(json) {

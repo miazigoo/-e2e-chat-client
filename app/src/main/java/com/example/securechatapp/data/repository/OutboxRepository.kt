@@ -1,8 +1,8 @@
 package com.example.securechatapp.data.repository
 
 import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
-import com.example.securechatapp.core.crypto.DevCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
+import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.data.local.db.SecureChatDatabase
 import com.example.securechatapp.data.local.db.decodeAttachmentsJson
 import com.example.securechatapp.data.local.db.encodeAttachmentsJson
@@ -36,7 +36,7 @@ data class PendingOutgoingMessage(
 class OutboxRepository @Inject constructor(
     database: SecureChatDatabase,
     private val json: Json,
-    private val crypto: DevCryptoEngine,
+    private val crypto: CryptoEngine,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
 ) {
     private val dao = database.pendingMessageOutboxDao()

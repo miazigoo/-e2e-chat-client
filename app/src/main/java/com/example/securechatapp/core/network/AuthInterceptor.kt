@@ -1,6 +1,6 @@
 package com.example.securechatapp.core.network
 
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.runBlocking
@@ -9,7 +9,7 @@ import okhttp3.Response
 
 @Singleton
 class AuthInterceptor @Inject constructor(
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {

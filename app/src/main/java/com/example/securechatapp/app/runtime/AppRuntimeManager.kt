@@ -3,7 +3,7 @@ package com.example.securechatapp.app.runtime
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.SessionRepository
@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class AppRuntimeManager @Inject constructor(
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val outboxDispatcher: OutboxDispatcher,

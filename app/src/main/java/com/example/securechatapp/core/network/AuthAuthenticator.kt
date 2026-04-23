@@ -1,6 +1,6 @@
 package com.example.securechatapp.core.network
 
-import com.example.securechatapp.data.local.preferences.SessionLocalDataSource
+import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -15,7 +15,7 @@ import okhttp3.Route
 
 class AuthAuthenticator(
     private val baseUrl: String,
-    private val sessionLocalDataSource: SessionLocalDataSource,
+    private val sessionLocalDataSource: SecureSessionLocalDataSource,
     private val json: Json,
 ) : Authenticator {
 
