@@ -30,7 +30,10 @@ fun ConversationTopBar(
     subtitle: String,
     onBack: () -> Unit,
     onLogout: () -> Unit,
+    onSharedSecretClick: () -> Unit,
     isLoggingOut: Boolean,
+    sharedSecretEnabled: Boolean,
+    localSharedSecretEnabled: Boolean,
 ) {
     val dark = isSystemInDarkTheme()
 
@@ -88,6 +91,16 @@ fun ConversationTopBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            TextButton(onClick = onSharedSecretClick) {
+                Text(
+                    when {
+                        sharedSecretEnabled && localSharedSecretEnabled -> "🔐"
+                        sharedSecretEnabled -> "🔒"
+                        else -> "🔓"
+                    }
                 )
             }
 

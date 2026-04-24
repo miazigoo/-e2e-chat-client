@@ -32,6 +32,8 @@ import com.example.securechatapp.data.remote.dto.RevokeCurrentDeviceResponseDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenRequestDto
+import com.example.securechatapp.data.remote.dto.ConversationSettingsResponseDto
+import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenResponseDto
 import com.example.securechatapp.data.remote.dto.UserSearchResponseDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeRequestDto
@@ -44,6 +46,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -93,6 +96,13 @@ interface ChatBackendApi {
     suspend fun getConversation(
         @Path("conversationId") conversationId: Int,
     ): ApiEnvelopeDto<GetConversationResponseDto>
+
+
+@PATCH("conversations/{conversationId}/settings")
+suspend fun updateConversationSettings(
+    @Path("conversationId") conversationId: Int,
+    @Body body: UpdateConversationSettingsRequestDto,
+): ApiEnvelopeDto<ConversationSettingsResponseDto>
 
     @GET("messages/conversations/{conversationId}")
     suspend fun listMessages(

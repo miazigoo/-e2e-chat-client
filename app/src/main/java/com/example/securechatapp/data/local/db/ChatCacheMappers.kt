@@ -13,27 +13,36 @@ import kotlinx.serialization.json.Json
 fun ConversationCacheEntity.toConversationListItem(): ConversationListItem {
     return ConversationListItem(
         conversationId = conversationId,
+        conversationUuid = conversationUuid,
         title = title,
         peerUserId = peerUserId,
         peerNickname = peerNickname,
         unreadCount = unreadCount,
         lastMessagePreview = lastMessagePreview,
         updatedAt = updatedAt,
+        sharedSecretEnabled = sharedSecretEnabled,
+        sharedSecretFingerprint = sharedSecretFingerprint,
+        peerSharedSecretEnabled = peerSharedSecretEnabled,
     )
 }
 
 fun ConversationCacheEntity.toConversationDetails(): ConversationDetails {
     return ConversationDetails(
         conversationId = conversationId,
+        conversationUuid = conversationUuid,
         title = title,
         peerUserId = peerUserId,
         protectionMode = protectionMode ?: "normal",
+        sharedSecretEnabled = sharedSecretEnabled,
+        sharedSecretFingerprint = sharedSecretFingerprint,
+        peerSharedSecretEnabled = peerSharedSecretEnabled,
     )
 }
 
 fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): ConversationCacheEntity {
     return ConversationCacheEntity(
         conversationId = conversationId,
+        conversationUuid = conversationUuid,
         title = title,
         peerUserId = peerUserId,
         peerNickname = peerNickname,
@@ -42,12 +51,16 @@ fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): Conversat
         updatedAt = updatedAt,
         protectionMode = previous?.protectionMode,
         lastEventId = previous?.lastEventId,
+        sharedSecretEnabled = sharedSecretEnabled,
+        sharedSecretFingerprint = sharedSecretFingerprint,
+        peerSharedSecretEnabled = peerSharedSecretEnabled,
     )
 }
 
 fun ConversationDetails.toEntity(previous: ConversationCacheEntity?): ConversationCacheEntity {
     return ConversationCacheEntity(
         conversationId = conversationId,
+        conversationUuid = conversationUuid,
         title = title,
         peerUserId = peerUserId,
         peerNickname = previous?.peerNickname.orEmpty(),
@@ -56,6 +69,9 @@ fun ConversationDetails.toEntity(previous: ConversationCacheEntity?): Conversati
         updatedAt = previous?.updatedAt,
         protectionMode = protectionMode,
         lastEventId = previous?.lastEventId,
+        sharedSecretEnabled = sharedSecretEnabled,
+        sharedSecretFingerprint = sharedSecretFingerprint,
+        peerSharedSecretEnabled = peerSharedSecretEnabled,
     )
 }
 

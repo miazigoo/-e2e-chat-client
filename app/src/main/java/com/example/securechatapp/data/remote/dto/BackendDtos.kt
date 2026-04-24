@@ -206,6 +206,14 @@ data class CreateConversationResponseDto(
     val recipientUserId: Int,
     @SerialName("protection_mode")
     val protectionMode: String,
+    @SerialName("shared_secret_enabled")
+    val sharedSecretEnabled: Boolean = false,
+    @SerialName("shared_secret_fingerprint")
+    val sharedSecretFingerprint: String? = null,
+    @SerialName("shared_secret_updated_at")
+    val sharedSecretUpdatedAt: String? = null,
+    @SerialName("peer_shared_secret_enabled")
+    val peerSharedSecretEnabled: Boolean = false,
 )
 
 @Serializable
@@ -229,6 +237,14 @@ data class ConversationListItemDto(
     val updatedAt: String? = null,
     @SerialName("last_message")
     val lastMessage: ConversationLastMessageDto? = null,
+    @SerialName("shared_secret_enabled")
+    val sharedSecretEnabled: Boolean = false,
+    @SerialName("shared_secret_fingerprint")
+    val sharedSecretFingerprint: String? = null,
+    @SerialName("shared_secret_updated_at")
+    val sharedSecretUpdatedAt: String? = null,
+    @SerialName("peer_shared_secret_enabled")
+    val peerSharedSecretEnabled: Boolean = false,
 )
 
 @Serializable
@@ -247,6 +263,37 @@ data class GetConversationResponseDto(
     val peerUserId: Int,
     @SerialName("protection_mode")
     val protectionMode: String,
+    @SerialName("shared_secret_enabled")
+    val sharedSecretEnabled: Boolean = false,
+    @SerialName("shared_secret_fingerprint")
+    val sharedSecretFingerprint: String? = null,
+    @SerialName("shared_secret_updated_at")
+    val sharedSecretUpdatedAt: String? = null,
+    @SerialName("peer_shared_secret_enabled")
+    val peerSharedSecretEnabled: Boolean = false,
+)
+
+
+@Serializable
+data class UpdateConversationSettingsRequestDto(
+    @SerialName("shared_secret_enabled")
+    val sharedSecretEnabled: Boolean? = null,
+    @SerialName("shared_secret_fingerprint")
+    val sharedSecretFingerprint: String? = null,
+)
+
+@Serializable
+data class ConversationSettingsResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    @SerialName("user_id")
+    val userId: Int,
+    @SerialName("shared_secret_enabled")
+    val sharedSecretEnabled: Boolean,
+    @SerialName("shared_secret_fingerprint")
+    val sharedSecretFingerprint: String? = null,
+    @SerialName("shared_secret_updated_at")
+    val sharedSecretUpdatedAt: String? = null,
 )
 
 @Serializable
@@ -265,6 +312,8 @@ data class SendMessageRequestDto(
     @SerialName("encryption_mode")
     val encryptionMode: String = "signal",
     val nonce: String,
+    @SerialName("aad_hash")
+    val aadHash: String? = null,
     @SerialName("client_created_at")
     val clientCreatedAt: String,
     @SerialName("attachment_ids")
@@ -302,7 +351,16 @@ data class MessageItemDto(
     val senderUserId: Int,
     @SerialName("recipient_user_id")
     val recipientUserId: Int,
+    @SerialName("message_type")
+    val messageType: String = "text",
     val ciphertext: String,
+    @SerialName("ciphertext_version")
+    val ciphertextVersion: Int = 1,
+    @SerialName("encryption_mode")
+    val encryptionMode: String = "signal",
+    val nonce: String = "",
+    @SerialName("aad_hash")
+    val aadHash: String? = null,
     @SerialName("client_created_at")
     val clientCreatedAt: String,
     @SerialName("server_received_at")

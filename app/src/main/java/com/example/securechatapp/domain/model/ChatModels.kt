@@ -11,20 +11,28 @@ data class UserSearchItem(
 @Serializable
 data class ConversationListItem(
     val conversationId: Int,
+    val conversationUuid: String,
     val title: String,
     val peerUserId: Int,
     val peerNickname: String,
     val unreadCount: Int,
     val lastMessagePreview: String,
     val updatedAt: String? = null,
+    val sharedSecretEnabled: Boolean = false,
+    val sharedSecretFingerprint: String? = null,
+    val peerSharedSecretEnabled: Boolean = false,
 )
 
 @Serializable
 data class ConversationDetails(
     val conversationId: Int,
+    val conversationUuid: String,
     val title: String,
     val peerUserId: Int,
     val protectionMode: String,
+    val sharedSecretEnabled: Boolean = false,
+    val sharedSecretFingerprint: String? = null,
+    val peerSharedSecretEnabled: Boolean = false,
 )
 
 @Serializable

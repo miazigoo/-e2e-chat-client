@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.core.common.ConversationsRefreshBus
+import com.example.securechatapp.crypto.sharedsecret.ConversationSharedSecretCrypto
 import com.example.securechatapp.data.files.AttachmentDownloadEvent
 import com.example.securechatapp.data.files.AttachmentDownloadManager
 import com.example.securechatapp.data.files.AttachmentLocalState
@@ -52,7 +53,13 @@ data class ConversationUiState(
     val info: String? = null,
     val title: String = "",
     val peerUserId: Int? = null,
+    val conversationUuid: String = "",
     val protectionMode: String = "normal",
+    val sharedSecretEnabled: Boolean = false,
+    val sharedSecretFingerprint: String? = null,
+    val localSharedSecretEnabled: Boolean = false,
+    val localSharedSecretFingerprint: String? = null,
+    val peerSharedSecretEnabled: Boolean = false,
     val messages: List<ChatMessage> = emptyList(),
     val attachmentSheetMessageId: Int? = null,
     val attachmentLocalStates: Map<Int, AttachmentLocalState> = emptyMap(),
@@ -81,6 +88,7 @@ class ConversationViewModel @Inject constructor(
     private val attachmentUploadManager: AttachmentUploadManager,
     private val attachmentDownloadManager: AttachmentDownloadManager,
     private val encryptedAttachmentFileManager: EncryptedAttachmentFileManager,
+    private val sharedSecretCrypto: ConversationSharedSecretCrypto,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val conversationsRefreshBus: ConversationsRefreshBus,
 ) : ViewModel() {
@@ -108,6 +116,67 @@ class ConversationViewModel @Inject constructor(
     fun retryLoad() {
         loadConversation()
     }
+
+
+fun enableSharedSecret(token: String) {
+    val uuid = _state.value.conversationUuid
+    val currentConversationId = _state.value.conversationId ?: return
+    if (uuid.isBlank()) {
+        _state.value = _state.value.copy(error = "conversation_uuid ещё не загружен")
+        return
+    }
+
+    viewModelScope.launch {
+        runCatching {
+            val localState = sharedSecretCrypto.enable(
+                conversationUuid = uuid,
+                token = token,
+            )
+
+            val details = conversationRepository.updateSharedSecretSettings(
+                conversationId = currentConversationId,
+                enabled = true,
+                fingerprint = localState.fingerprint,
+            )
+
+            chatCacheRepository.upsertConversationDetails(details)
+            refreshSharedSecretState(details)
+            conversationsRefreshBus.requestRefresh()
+        }.onSuccess {
+            _state.value = _state.value.copy(info = "Доп. шифрование включено для этого чата")
+            reloadMessages(markDelivered = false, markRead = false)
+        }.onFailure {
+            _state.value = _state.value.copy(error = it.message ?: "Не удалось включить доп. шифрование")
+        }
+    }
+}
+
+fun disableSharedSecret() {
+    val uuid = _state.value.conversationUuid
+    val currentConversationId = _state.value.conversationId ?: return
+    if (uuid.isBlank()) return
+
+    viewModelScope.launch {
+        runCatching {
+            sharedSecretCrypto.disable(uuid)
+
+            val details = conversationRepository.updateSharedSecretSettings(
+                conversationId = currentConversationId,
+                enabled = false,
+                fingerprint = null,
+            )
+
+            chatCacheRepository.upsertConversationDetails(details)
+            refreshSharedSecretState(details)
+            conversationsRefreshBus.requestRefresh()
+        }.onSuccess {
+            _state.value = _state.value.copy(info = "Доп. шифрование выключено для этого чата")
+            reloadMessages(markDelivered = false, markRead = false)
+        }.onFailure {
+            _state.value = _state.value.copy(error = it.message ?: "Не удалось выключить доп. шифрование")
+        }
+    }
+}
 
     fun sendMessage(
         text: String,
@@ -393,6 +462,7 @@ class ConversationViewModel @Inject constructor(
             try {
                 val conversation = conversationRepository.getConversation(conversationId)
                 chatCacheRepository.upsertConversationDetails(conversation)
+                refreshSharedSecretState(conversation)
 
                 outboxRepository.requeueSendingMessages(conversationId)
                 catchUpCursorToLatest()
@@ -416,15 +486,40 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
+
+private fun refreshSharedSecretState(
+    details: com.example.securechatapp.domain.model.ConversationDetails,
+) {
+    val localState = sharedSecretCrypto.getState(details.conversationUuid)
+    _state.value = _state.value.copy(
+        conversationId = details.conversationId,
+        conversationUuid = details.conversationUuid,
+        title = details.title,
+        peerUserId = details.peerUserId,
+        protectionMode = details.protectionMode,
+        sharedSecretEnabled = details.sharedSecretEnabled,
+        sharedSecretFingerprint = details.sharedSecretFingerprint,
+        peerSharedSecretEnabled = details.peerSharedSecretEnabled,
+        localSharedSecretEnabled = localState.enabled,
+        localSharedSecretFingerprint = localState.fingerprint,
+    )
+}
+
     private fun observeCachedConversation() {
         viewModelScope.launch {
             chatCacheRepository.observeConversationDetails(conversationId).collect { details ->
                 if (details != null) {
                     _state.value = _state.value.copy(
                         conversationId = details.conversationId,
+                        conversationUuid = details.conversationUuid,
                         title = details.title,
                         peerUserId = details.peerUserId,
                         protectionMode = details.protectionMode,
+                        sharedSecretEnabled = details.sharedSecretEnabled,
+                        sharedSecretFingerprint = details.sharedSecretFingerprint,
+                        peerSharedSecretEnabled = details.peerSharedSecretEnabled,
+                        localSharedSecretEnabled = sharedSecretCrypto.getState(details.conversationUuid).enabled,
+                        localSharedSecretFingerprint = sharedSecretCrypto.getState(details.conversationUuid).fingerprint,
                     )
                 }
             }

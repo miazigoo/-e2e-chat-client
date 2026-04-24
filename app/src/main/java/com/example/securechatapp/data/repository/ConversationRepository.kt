@@ -3,6 +3,7 @@ package com.example.securechatapp.data.repository
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.ConversationListItemDto
 import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
+import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
@@ -20,12 +21,16 @@ class ConversationRepository @Inject constructor(
         return safe { api.listConversations().data }.items.map {
             ConversationListItem(
                 conversationId = it.conversationId,
+                conversationUuid = it.conversationUuid,
                 title = it.title ?: (it.peer.nickname ?: "User ${it.peer.userId}"),
                 peerUserId = it.peer.userId,
                 peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
                 unreadCount = it.unreadCount,
                 lastMessagePreview = buildConversationPreview(it),
                 updatedAt = it.lastMessage?.serverReceivedAt ?: it.updatedAt,
+                sharedSecretEnabled = it.sharedSecretEnabled,
+                sharedSecretFingerprint = it.sharedSecretFingerprint,
+                peerSharedSecretEnabled = it.peerSharedSecretEnabled,
             )
         }
     }
@@ -53,10 +58,32 @@ class ConversationRepository @Inject constructor(
         val data = safe { api.getConversation(conversationId).data }
         return ConversationDetails(
             conversationId = data.conversationId,
+            conversationUuid = data.conversationUuid,
             title = data.title ?: "Chat ${data.conversationId}",
             peerUserId = data.peerUserId,
             protectionMode = data.protectionMode,
+            sharedSecretEnabled = data.sharedSecretEnabled,
+            sharedSecretFingerprint = data.sharedSecretFingerprint,
+            peerSharedSecretEnabled = data.peerSharedSecretEnabled,
         )
+    }
+
+    suspend fun updateSharedSecretSettings(
+        conversationId: Int,
+        enabled: Boolean,
+        fingerprint: String?,
+    ): ConversationDetails {
+        safe {
+            api.updateConversationSettings(
+                conversationId = conversationId,
+                body = UpdateConversationSettingsRequestDto(
+                    sharedSecretEnabled = enabled,
+                    sharedSecretFingerprint = fingerprint,
+                ),
+            ).data
+        }
+
+        return getConversation(conversationId)
     }
 
     private fun buildConversationPreview(item: ConversationListItemDto): String {

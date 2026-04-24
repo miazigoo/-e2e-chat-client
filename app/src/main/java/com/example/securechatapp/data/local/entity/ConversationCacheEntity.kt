@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class ConversationCacheEntity(
     @PrimaryKey
     val conversationId: Int,
+    val conversationUuid: String = "",
     val title: String,
     val peerUserId: Int,
     val peerNickname: String,
@@ -15,4 +16,7 @@ data class ConversationCacheEntity(
     val updatedAt: String? = null,
     val protectionMode: String? = null,
     val lastEventId: Int? = null,
+    val sharedSecretEnabled: Boolean = false,
+    val sharedSecretFingerprint: String? = null,
+    val peerSharedSecretEnabled: Boolean = false,
 )

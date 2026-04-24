@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +46,7 @@ fun ConversationScreen(
     var message by remember { mutableStateOf("") }
     var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAttachmentName by remember { mutableStateOf<String?>(null) }
+    var showSharedSecretSettings by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -58,8 +63,19 @@ fun ConversationScreen(
         buildConversationRows(state.messages)
     }
 
-    val subtitle = remember(state.messages) {
-        buildConversationSubtitle(state.messages)
+    val subtitle = remember(
+        state.messages,
+        state.sharedSecretEnabled,
+        state.localSharedSecretEnabled,
+        state.peerSharedSecretEnabled,
+    ) {
+        val base = buildConversationSubtitle(state.messages)
+        when {
+            state.sharedSecretEnabled && state.localSharedSecretEnabled -> "🔐 $base"
+            state.sharedSecretEnabled -> "🔒 нужен токен · $base"
+            state.peerSharedSecretEnabled -> "🔓 собеседник включил доп. шифрование · $base"
+            else -> base
+        }
     }
 
     LaunchedEffect(conversationRows.size) {
@@ -81,7 +97,10 @@ fun ConversationScreen(
                 subtitle = subtitle,
                 onBack = onBack,
                 onLogout = { viewModel.logout(onLoggedOut) },
+                onSharedSecretClick = { showSharedSecretSettings = true },
                 isLoggingOut = state.isLoggingOut,
+                sharedSecretEnabled = state.sharedSecretEnabled,
+                localSharedSecretEnabled = state.localSharedSecretEnabled,
             )
 
             state.error?.let {
@@ -224,5 +243,115 @@ fun ConversationScreen(
                 onDownload = viewModel::downloadCurrentPreview,
             )
         }
+
+
+if (showSharedSecretSettings) {
+    SharedSecretSettingsDialog(
+        enabledOnServer = state.sharedSecretEnabled,
+        enabledLocally = state.localSharedSecretEnabled,
+        fingerprint = state.sharedSecretFingerprint,
+        localFingerprint = state.localSharedSecretFingerprint,
+        peerEnabled = state.peerSharedSecretEnabled,
+        onDismiss = { showSharedSecretSettings = false },
+        onEnable = { token ->
+            viewModel.enableSharedSecret(token)
+            showSharedSecretSettings = false
+        },
+        onDisable = {
+            viewModel.disableSharedSecret()
+            showSharedSecretSettings = false
+        },
+    )
+}
+
     }
+}
+
+
+@Composable
+private fun SharedSecretSettingsDialog(
+    enabledOnServer: Boolean,
+    enabledLocally: Boolean,
+    fingerprint: String?,
+    localFingerprint: String?,
+    peerEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onEnable: (String) -> Unit,
+    onDisable: () -> Unit,
+) {
+    var token by remember { mutableStateOf("") }
+    val canEnable = token.trim().length >= 8
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Доп. шифрование чата")
+        },
+        text = {
+            Column {
+                Text(
+                    text = when {
+                        enabledOnServer && enabledLocally -> "Включено для этого чата. Сервер хранит только fingerprint."
+                        enabledOnServer -> "Включено на сервере, но на этом устройстве нужен токен чата."
+                        else -> "Включите доп. слой поверх основного шифрования для этого чата."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Text(
+                    text = "Собеседник: ${if (peerEnabled) "включил" else "не включил"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+
+                val shownFingerprint = localFingerprint ?: fingerprint
+                if (!shownFingerprint.isNullOrBlank()) {
+                    Text(
+                        text = "Fingerprint: ${shownFingerprint.take(12)}…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Токен этого чата") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                )
+
+                Text(
+                    text = "Токен не отправляется на сервер. Ключ выводится локально из token + conversation_uuid.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onEnable(token) },
+                enabled = canEnable,
+            ) {
+                Text(if (enabledOnServer || enabledLocally) "Обновить токен" else "Включить")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (enabledOnServer || enabledLocally) {
+                    TextButton(onClick = onDisable) {
+                        Text("Выключить")
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Закрыть")
+                }
+            }
+        },
+    )
 }

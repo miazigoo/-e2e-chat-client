@@ -4,9 +4,11 @@ import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.example.securechatapp.crypto.engine.nowIso
-import com.example.securechatapp.crypto.engine.encryptPlainText
+import com.example.securechatapp.crypto.sharedsecret.ConversationSharedSecretMissingException
+import com.example.securechatapp.crypto.sharedsecret.ConversationSharedSecretCrypto
 import com.example.securechatapp.crypto.engine.decryptToPlainText
+import com.example.securechatapp.crypto.engine.encryptPlainText
+import com.example.securechatapp.crypto.engine.nowIso
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
@@ -27,6 +29,7 @@ class MessageRepository @Inject constructor(
     private val api: ChatBackendApi,
     private val crypto: CryptoEngine,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
+    private val sharedSecretCrypto: ConversationSharedSecretCrypto,
     json: Json,
 ) : BaseApiRepository(json) {
 
@@ -36,11 +39,13 @@ class MessageRepository @Inject constructor(
         conversationId: Int,
         peerUserId: Int,
     ): List<ChatMessage> {
+        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+
         return safe { api.listMessages(conversationId = conversationId).data }
             .items
             .sortedBy { it.messageId }
             .map { dto ->
-                val decoded = decodeEncryptedMessagePayload(dto.ciphertext)
+                val decoded = decodeEncryptedMessagePayload(conversationUuid = conversationUuid, ciphertext = dto.ciphertext, encryptionMode = dto.encryptionMode)
 
                 ChatMessage(
                     messageId = dto.messageId,
@@ -142,7 +147,18 @@ class MessageRepository @Inject constructor(
             attachmentDescriptors = normalizedDescriptors,
         )
 
-        val encrypted = crypto.encryptPlainText(payloadJson)
+        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        val sharedSecretPayload = sharedSecretCrypto.encryptIfEnabled(
+            conversationUuid = conversationUuid,
+            plainText = payloadJson,
+        )
+        val legacyEncrypted = if (sharedSecretPayload == null) {
+            crypto.encryptPlainText(payloadJson)
+        } else {
+            null
+        }
+        val ciphertext = sharedSecretPayload?.ciphertext ?: legacyEncrypted?.ciphertext.orEmpty()
+        val nonce = sharedSecretPayload?.nonce ?: legacyEncrypted?.nonce.orEmpty()
 
         val messageType = if (distinctAttachmentIds.isNotEmpty() && plainText.isBlank()) {
             "file"
@@ -157,8 +173,10 @@ class MessageRepository @Inject constructor(
                     recipientUserId = recipientUserId,
                     messageUuid = messageUuid,
                     messageType = messageType,
-                    ciphertext = encrypted.ciphertext,
-                    nonce = encrypted.nonce,
+                    ciphertext = ciphertext,
+                    nonce = nonce,
+                    encryptionMode = if (sharedSecretPayload != null) "signal_plus_shared_secret" else "signal",
+                    aadHash = sharedSecretPayload?.fingerprint,
                     clientCreatedAt = crypto.nowIso(),
                     attachmentIds = distinctAttachmentIds,
                 )
@@ -215,9 +233,25 @@ class MessageRepository @Inject constructor(
     }
 
     private fun decodeEncryptedMessagePayload(
+        conversationUuid: String,
         ciphertext: String,
+        encryptionMode: String,
     ): DecodedMessagePayload {
-        val decrypted = crypto.decryptToPlainText(ciphertext)
+        val decrypted = try {
+            if (encryptionMode == "signal_plus_shared_secret" || ciphertext.startsWith("ss1:")) {
+                sharedSecretCrypto.decryptIfNeeded(
+                    conversationUuid = conversationUuid,
+                    ciphertext = ciphertext,
+                )
+            } else {
+                crypto.decryptToPlainText(ciphertext)
+            }
+        } catch (e: ConversationSharedSecretMissingException) {
+            return DecodedMessagePayload(
+                text = "🔐 ${e.message}",
+                attachments = emptyList(),
+            )
+        }
 
         val payload = runCatching {
             jsonParser.decodeFromString(
