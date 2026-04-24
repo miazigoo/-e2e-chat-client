@@ -822,6 +822,18 @@ class ConversationViewModel @Inject constructor(
             )
 
             if (attachment.hasEncryptedBlobKeys) {
+                encryptedAttachmentFileManager.getCachedPreviewBytes(attachment.attachmentId)?.let { cachedBytes ->
+                    _state.value = _state.value.copy(
+                        imagePreviewAttachmentId = attachment.attachmentId,
+                        imagePreviewUrl = null,
+                        imagePreviewBytes = cachedBytes,
+                        imagePreviewFileName = attachment.fileName,
+                        imagePreviewAttachment = attachment,
+                        isLoadingImagePreview = false,
+                    )
+                    return@launch
+                }
+
                 runCatching {
                     val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
                         ?: error("Не удалось получить ссылку на encrypted attachment")
@@ -830,6 +842,7 @@ class ConversationViewModel @Inject constructor(
                         downloadUrl = downloadInfo.downloadUrl,
                         blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
                         blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                        attachmentId = attachment.attachmentId,
                     )
                 }.onSuccess { bytes ->
                     _state.value = _state.value.copy(

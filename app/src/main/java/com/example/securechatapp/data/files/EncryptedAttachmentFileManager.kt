@@ -10,6 +10,7 @@ import android.webkit.MimeTypeMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -22,6 +23,12 @@ class EncryptedAttachmentFileManager @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
 ) {
+    private val previewCache = object : LinkedHashMap<Int, ByteArray>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, ByteArray>?): Boolean {
+            return size > MAX_PREVIEW_CACHE_ITEMS
+        }
+    }
+
     private val prefs by lazy {
         context.getSharedPreferences("encrypted_attachment_files", Context.MODE_PRIVATE)
     }
@@ -30,24 +37,51 @@ class EncryptedAttachmentFileManager @Inject constructor(
         downloadUrl: String,
         blobKeyBase64: String,
         blobNonceBase64: String,
+        attachmentId: Int? = null,
     ): ByteArray = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(downloadUrl)
-            .get()
-            .build()
-
-        val encryptedBytes = okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                error("Failed to download encrypted attachment: HTTP ${response.code}")
+        attachmentId?.let { id ->
+            getCachedPreviewBytes(id)?.let { cachedBytes ->
+                return@withContext cachedBytes
             }
-            response.body?.bytes() ?: error("Empty encrypted attachment response body")
         }
 
-        attachmentCryptoEngine.decryptBlob(
+        val encryptedBytes = executeWithRetry {
+            val request = Request.Builder()
+                .url(downloadUrl)
+                .get()
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    error("Failed to download encrypted attachment: HTTP ${response.code}")
+                }
+                response.body?.bytes() ?: error("Empty encrypted attachment response body")
+            }
+        }
+
+        val plainBytes = attachmentCryptoEngine.decryptBlob(
             ciphertext = encryptedBytes,
             keyBase64 = blobKeyBase64,
             nonceBase64 = blobNonceBase64,
         )
+
+        attachmentId?.let { id ->
+            putPreviewBytes(id, plainBytes)
+        }
+
+        plainBytes
+    }
+
+    fun getCachedPreviewBytes(attachmentId: Int): ByteArray? {
+        return synchronized(previewCache) {
+            previewCache[attachmentId]
+        }
+    }
+
+    fun clearPreviewCache(attachmentId: Int) {
+        synchronized(previewCache) {
+            previewCache.remove(attachmentId)
+        }
     }
 
     suspend fun saveDecryptedAttachmentToDownloads(
@@ -62,6 +96,7 @@ class EncryptedAttachmentFileManager @Inject constructor(
             downloadUrl = downloadUrl,
             blobKeyBase64 = blobKeyBase64,
             blobNonceBase64 = blobNonceBase64,
+            attachmentId = attachmentId,
         )
 
         val resolver = context.contentResolver
@@ -141,6 +176,38 @@ class EncryptedAttachmentFileManager @Inject constructor(
 
         context.startActivity(intent)
         return true
+    }
+
+
+    private suspend fun <T> executeWithRetry(
+        maxAttempts: Int = DOWNLOAD_MAX_ATTEMPTS,
+        block: suspend () -> T,
+    ): T {
+        var lastError: Throwable? = null
+
+        repeat(maxAttempts) { attempt ->
+            try {
+                return block()
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxAttempts - 1) {
+                    delay(DOWNLOAD_RETRY_DELAYS_MS.getOrElse(attempt) { DOWNLOAD_RETRY_DELAYS_MS.last() })
+                }
+            }
+        }
+
+        throw lastError ?: IllegalStateException("Unknown attachment download error")
+    }
+
+    private fun putPreviewBytes(
+        attachmentId: Int,
+        bytes: ByteArray,
+    ) {
+        if (bytes.size > MAX_PREVIEW_CACHE_BYTES) return
+
+        synchronized(previewCache) {
+            previewCache[attachmentId] = bytes
+        }
     }
 
     private fun uriExists(uri: Uri): Boolean {
@@ -225,4 +292,11 @@ class EncryptedAttachmentFileManager @Inject constructor(
         val mimeType: String?,
         val fileName: String,
     )
+
+    private companion object {
+        const val DOWNLOAD_MAX_ATTEMPTS = 3
+        const val MAX_PREVIEW_CACHE_ITEMS = 24
+        const val MAX_PREVIEW_CACHE_BYTES = 8 * 1024 * 1024
+        val DOWNLOAD_RETRY_DELAYS_MS = longArrayOf(600L, 1_500L)
+    }
 }
