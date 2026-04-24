@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.ui.theme.TgTopBarDark
 import com.example.securechatapp.ui.theme.TgTopBarLight
 
@@ -35,8 +36,15 @@ fun ConversationTopBar(
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
+    realtimeState: RealtimeConnectionState,
 ) {
     val dark = isSystemInDarkTheme()
+    val statusDotColor = when (realtimeState) {
+        RealtimeConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+        RealtimeConnectionState.CONNECTING,
+        RealtimeConnectionState.RECONNECTING -> MaterialTheme.colorScheme.tertiary
+        RealtimeConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
+    }
 
     Surface(
         modifier = Modifier
@@ -94,7 +102,7 @@ fun ConversationTopBar(
                     Surface(
                         modifier = Modifier.size(8.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                        color = statusDotColor,
                     ) {}
 
                     Text(

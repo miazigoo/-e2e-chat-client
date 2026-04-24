@@ -3,6 +3,7 @@ package com.example.securechatapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.core.common.ConversationsRefreshBus
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.ChatCacheRepository
@@ -24,6 +25,7 @@ data class ChatsUiState(
     val info: String? = null,
     val users: List<UserSearchItem> = emptyList(),
     val conversations: List<ConversationListItem> = emptyList(),
+    val realtimeState: RealtimeConnectionState = RealtimeConnectionState.DISCONNECTED,
 )
 
 @HiltViewModel
@@ -42,6 +44,7 @@ class ChatsViewModel @Inject constructor(
         observeCachedConversations()
         observeRefreshBus()
         observeRealtimeEvents()
+        observeRealtimeConnectionState()
         connectRealtime()
         refreshConversations()
     }
@@ -137,6 +140,16 @@ class ChatsViewModel @Inject constructor(
 
             _state.value = ChatsUiState()
             onLoggedOut()
+        }
+    }
+
+    private fun observeRealtimeConnectionState() {
+        viewModelScope.launch {
+            realtimeWebSocketManager.connectionState.collect { connectionState ->
+                _state.value = _state.value.copy(
+                    realtimeState = connectionState,
+                )
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.domain.model.ChatMessage
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -51,24 +52,60 @@ fun buildConversationRows(
 
 fun buildConversationSubtitle(
     messages: List<ChatMessage>,
+    realtimeState: RealtimeConnectionState,
+    isSyncing: Boolean,
 ): String {
-    if (messages.isEmpty()) return "начните защищённый диалог"
+    val activityText = if (messages.isEmpty()) {
+        "начните защищённый диалог"
+    } else {
+        val last = messages.last()
+        val lastDate = parseLocalDate(last.createdAt)
+        val today = LocalDate.now()
 
-    val last = messages.last()
-    val lastDate = parseLocalDate(last.createdAt)
-    val today = LocalDate.now()
-
-    return when (lastDate) {
-        null -> "защищённый чат"
-        today -> "был(а) недавно"
-        today.minusDays(1) -> "был(а) вчера"
-        else -> {
-            val text = runCatching {
-                OffsetDateTime.parse(last.createdAt)
-                    .format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
-            }.getOrDefault("")
-            if (text.isBlank()) "защищённый чат" else "последняя активность $text"
+        when (lastDate) {
+            null -> "защищённый чат"
+            today -> "был(а) недавно"
+            today.minusDays(1) -> "был(а) вчера"
+            else -> {
+                val text = runCatching {
+                    OffsetDateTime.parse(last.createdAt)
+                        .format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
+                }.getOrDefault("")
+                if (text.isBlank()) "защищённый чат" else "последняя активность $text"
+            }
         }
+    }
+
+    val prefix = when {
+        isSyncing -> "синхронизация"
+        realtimeState == RealtimeConnectionState.RECONNECTING -> "переподключение"
+        realtimeState == RealtimeConnectionState.CONNECTING -> "подключение"
+        realtimeState == RealtimeConnectionState.DISCONNECTED -> "офлайн"
+        else -> null
+    }
+
+    return listOfNotNull(prefix, activityText).joinToString(" · ")
+}
+
+fun realtimeBannerText(
+    realtimeState: RealtimeConnectionState,
+): String? {
+    return when (realtimeState) {
+        RealtimeConnectionState.CONNECTED -> null
+        RealtimeConnectionState.CONNECTING -> "Подключаем realtime…"
+        RealtimeConnectionState.RECONNECTING -> "Переподключаем realtime…"
+        RealtimeConnectionState.DISCONNECTED -> "Realtime недоступен. История и отправка продолжат синхронизацию при восстановлении сети."
+    }
+}
+
+fun realtimeStatusLabel(
+    realtimeState: RealtimeConnectionState,
+): String {
+    return when (realtimeState) {
+        RealtimeConnectionState.CONNECTED -> "secure connection"
+        RealtimeConnectionState.CONNECTING -> "connecting…"
+        RealtimeConnectionState.RECONNECTING -> "reconnecting…"
+        RealtimeConnectionState.DISCONNECTED -> "offline mode"
     }
 }
 

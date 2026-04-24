@@ -4,16 +4,22 @@ import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -44,104 +50,54 @@ class RealtimeWebSocketManager @Inject constructor(
     private val json: Json,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val connectionMutex = Mutex()
 
     private var webSocket: WebSocket? = null
-    private var isConnected: Boolean = false
     private var keepAliveJob: Job? = null
+    private var reconnectJob: Job? = null
+    private var desiredConnection = false
+    private var reconnectAttempt = 0
 
     private val subscribedConversationIds = linkedSetOf<Int>()
 
     private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
+    private val _connectionState = MutableStateFlow(RealtimeConnectionState.DISCONNECTED)
+    val connectionState: StateFlow<RealtimeConnectionState> = _connectionState.asStateFlow()
+
     suspend fun connectIfNeeded(): Boolean {
-        if (webSocket != null) return true
+        return connectionMutex.withLock {
+            desiredConnection = true
 
-        val session = sessionLocalDataSource.getSessionSnapshot() ?: return false
-        val accessToken = session.accessToken?.takeIf { it.isNotBlank() } ?: return false
-        val deviceUuid = session.deviceUuid?.takeIf { it.isNotBlank() } ?: return false
-
-        val request = Request.Builder()
-            .url(buildWsUrl())
-            .header("Authorization", "Bearer $accessToken")
-            .header("X-Device-UUID", deviceUuid)
-            .build()
-
-        webSocket = okHttpClient.newWebSocket(
-            request,
-            object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
-                    isConnected = true
-                    startKeepAlive()
-
-                    scope.launch {
-                        _events.emit(RealtimeEvent.Connected)
-                        resubscribeAll()
-                    }
-                }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    scope.launch {
-                        handleIncomingMessage(text)
-                    }
-                }
-
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
-                    scope.launch {
-                        _events.emit(RealtimeEvent.Disconnected)
-                    }
-                }
-
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
-                    scope.launch {
-                        _events.emit(RealtimeEvent.Disconnected)
-                    }
-                }
-
-                override fun onFailure(
-                    webSocket: WebSocket,
-                    t: Throwable,
-                    response: okhttp3.Response?,
-                ) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
-                    scope.launch {
-                        _events.emit(
-                            RealtimeEvent.Error(
-                                message = t.message ?: "WebSocket failure"
-                            )
-                        )
-                    }
-                }
+            if (webSocket != null) {
+                true
+            } else {
+                reconnectJob?.cancel()
+                reconnectJob = null
+                openSocket(isReconnect = reconnectAttempt > 0)
             }
-        )
-
-        return true
+        }
     }
 
     fun disconnect() {
+        desiredConnection = false
+        reconnectAttempt = 0
+        reconnectJob?.cancel()
+        reconnectJob = null
         stopKeepAlive()
         webSocket?.close(1000, "client_disconnect")
         webSocket = null
-        isConnected = false
+        _connectionState.value = RealtimeConnectionState.DISCONNECTED
     }
 
     suspend fun subscribeConversation(conversationId: Int) {
         subscribedConversationIds.add(conversationId)
         if (!connectIfNeeded()) return
 
-        if (isConnected) {
+        if (_connectionState.value == RealtimeConnectionState.CONNECTED) {
             webSocket?.send(
-                """
-                {"type":"subscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
+                """{"type":"subscribe_conversation","conversation_id":$conversationId}"""
             )
         }
     }
@@ -149,17 +105,15 @@ class RealtimeWebSocketManager @Inject constructor(
     fun unsubscribeConversation(conversationId: Int) {
         subscribedConversationIds.remove(conversationId)
 
-        if (isConnected) {
+        if (_connectionState.value == RealtimeConnectionState.CONNECTED) {
             webSocket?.send(
-                """
-                {"type":"unsubscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
+                """{"type":"unsubscribe_conversation","conversation_id":$conversationId}"""
             )
         }
     }
 
     fun sendPing() {
-        if (isConnected) {
+        if (_connectionState.value == RealtimeConnectionState.CONNECTED) {
             webSocket?.send("""{"type":"ping"}""")
         }
     }
@@ -179,12 +133,150 @@ class RealtimeWebSocketManager @Inject constructor(
         keepAliveJob = null
     }
 
+    private suspend fun openSocket(
+        isReconnect: Boolean,
+    ): Boolean {
+        val session = sessionLocalDataSource.getSessionSnapshot()
+        val accessToken = session.accessToken?.takeIf { it.isNotBlank() } ?: run {
+            _connectionState.value = RealtimeConnectionState.DISCONNECTED
+            return false
+        }
+        val deviceUuid = session.deviceUuid?.takeIf { it.isNotBlank() } ?: run {
+            _connectionState.value = RealtimeConnectionState.DISCONNECTED
+            return false
+        }
+
+        _connectionState.value = if (isReconnect) {
+            RealtimeConnectionState.RECONNECTING
+        } else {
+            RealtimeConnectionState.CONNECTING
+        }
+
+        val request = Request.Builder()
+            .url(buildWsUrl())
+            .header("Authorization", "Bearer $accessToken")
+            .header("X-Device-UUID", deviceUuid)
+            .build()
+
+        webSocket = okHttpClient.newWebSocket(
+            request,
+            object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                    reconnectAttempt = 0
+                    _connectionState.value = RealtimeConnectionState.CONNECTED
+                    startKeepAlive()
+
+                    scope.launch {
+                        _events.emit(RealtimeEvent.Connected)
+                        resubscribeAll()
+                    }
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    scope.launch {
+                        handleIncomingMessage(text)
+                    }
+                }
+
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    handleSocketTermination(
+                        socket = webSocket,
+                        emitError = null,
+                    )
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    handleSocketTermination(
+                        socket = webSocket,
+                        emitError = null,
+                    )
+                }
+
+                override fun onFailure(
+                    webSocket: WebSocket,
+                    t: Throwable,
+                    response: okhttp3.Response?,
+                ) {
+                    handleSocketTermination(
+                        socket = webSocket,
+                        emitError = t.message ?: "WebSocket failure",
+                    )
+                }
+            }
+        )
+
+        return true
+    }
+
+    private fun handleSocketTermination(
+        socket: WebSocket,
+        emitError: String?,
+    ) {
+        val isCurrentSocket = webSocket === socket
+        stopKeepAlive()
+
+        if (isCurrentSocket) {
+            webSocket = null
+        }
+
+        if (emitError != null) {
+            scope.launch {
+                _events.emit(
+                    RealtimeEvent.Error(
+                        message = emitError,
+                    )
+                )
+            }
+        }
+
+        scope.launch {
+            _events.emit(RealtimeEvent.Disconnected)
+        }
+
+        if (desiredConnection) {
+            scheduleReconnect()
+        } else {
+            _connectionState.value = RealtimeConnectionState.DISCONNECTED
+        }
+    }
+
+    private fun scheduleReconnect() {
+        if (reconnectJob?.isActive == true) return
+
+        reconnectJob = scope.launch {
+            val attempt = reconnectAttempt
+            val delayMs = calculateReconnectDelay(attempt)
+
+            _connectionState.value = RealtimeConnectionState.RECONNECTING
+
+            if (delayMs > 0) {
+                delay(delayMs)
+            }
+
+            reconnectAttempt += 1
+
+            connectionMutex.withLock {
+                if (!desiredConnection || webSocket != null) {
+                    return@withLock
+                }
+                openSocket(isReconnect = true)
+            }
+        }
+    }
+
+    private fun calculateReconnectDelay(
+        attempt: Int,
+    ): Long {
+        if (attempt <= 0) return 0L
+        val baseDelay = 1_500L
+        val exponential = baseDelay * (1 shl min(attempt, 5))
+        return exponential.coerceAtMost(30_000L)
+    }
+
     private suspend fun resubscribeAll() {
         subscribedConversationIds.forEach { conversationId ->
             webSocket?.send(
-                """
-                {"type":"subscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
+                """{"type":"subscribe_conversation","conversation_id":$conversationId}"""
             )
         }
     }
@@ -195,6 +287,7 @@ class RealtimeWebSocketManager @Inject constructor(
 
         when (type) {
             "connected" -> {
+                _connectionState.value = RealtimeConnectionState.CONNECTED
                 _events.emit(RealtimeEvent.Connected)
             }
 

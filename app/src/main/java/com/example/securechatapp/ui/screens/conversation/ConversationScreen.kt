@@ -63,8 +63,12 @@ fun ConversationScreen(
         buildConversationRows(state.messages)
     }
 
-    val subtitle = remember(state.messages, state.protectionMode) {
-        buildConversationSubtitle(state.messages)
+    val subtitle = remember(state.messages, state.realtimeState, state.isSyncing) {
+        buildConversationSubtitle(
+            messages = state.messages,
+            realtimeState = state.realtimeState,
+            isSyncing = state.isSyncing,
+        )
     }
 
     val boundedVisibleRowsCount = min(
@@ -140,7 +144,12 @@ fun ConversationScreen(
                 onRefresh = viewModel::refreshConversation,
                 onLogout = { viewModel.logout(onLoggedOut) },
                 isLoggingOut = state.isLoggingOut,
+                realtimeState = state.realtimeState,
             )
+
+            realtimeBannerText(state.realtimeState)?.let {
+                Banner(text = it)
+            }
 
             state.error?.let {
                 Banner(text = it, isError = true)

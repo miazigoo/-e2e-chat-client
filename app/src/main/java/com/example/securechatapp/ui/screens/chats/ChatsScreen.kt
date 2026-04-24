@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
@@ -77,6 +78,7 @@ fun ChatsScreen(
                 onOpenSettings = onOpenSettings,
                 onLogout = { viewModel.logout(onLoggedOut) },
                 isLoggingOut = state.isLoggingOut,
+                realtimeState = state.realtimeState,
             )
 
             Column(
@@ -118,6 +120,11 @@ fun ChatsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+
+                realtimeInfoBanner(state.realtimeState)?.let {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoBanner(text = it)
                 }
 
                 state.error?.let {
@@ -196,6 +203,7 @@ private fun ChatsTopBar(
     onOpenSettings: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
+    realtimeState: RealtimeConnectionState,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -232,7 +240,7 @@ private fun ChatsTopBar(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "private messenger",
+                    text = realtimeStatusText(realtimeState),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -475,6 +483,29 @@ private fun InfoBanner(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
         )
+    }
+}
+
+
+private fun realtimeStatusText(
+    realtimeState: RealtimeConnectionState,
+): String {
+    return when (realtimeState) {
+        RealtimeConnectionState.CONNECTED -> "secure connection"
+        RealtimeConnectionState.CONNECTING -> "connecting…"
+        RealtimeConnectionState.RECONNECTING -> "reconnecting…"
+        RealtimeConnectionState.DISCONNECTED -> "offline mode"
+    }
+}
+
+private fun realtimeInfoBanner(
+    realtimeState: RealtimeConnectionState,
+): String? {
+    return when (realtimeState) {
+        RealtimeConnectionState.CONNECTED -> null
+        RealtimeConnectionState.CONNECTING -> "Подключаем realtime…"
+        RealtimeConnectionState.RECONNECTING -> "Соединение восстанавливается…"
+        RealtimeConnectionState.DISCONNECTED -> "Realtime офлайн. Список чатов обновится после восстановления сети."
     }
 }
 

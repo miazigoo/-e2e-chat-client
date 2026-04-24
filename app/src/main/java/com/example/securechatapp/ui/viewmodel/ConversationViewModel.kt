@@ -10,6 +10,7 @@ import com.example.securechatapp.data.files.AttachmentDownloadManager
 import com.example.securechatapp.data.files.AttachmentLocalState
 import com.example.securechatapp.data.files.AttachmentUploadManager
 import com.example.securechatapp.data.files.EncryptedAttachmentFileManager
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.AttachmentRepository
@@ -65,6 +66,8 @@ data class ConversationUiState(
     val imagePreviewFileName: String? = null,
     val imagePreviewAttachment: AttachmentItem? = null,
     val isLoadingImagePreview: Boolean = false,
+    val realtimeState: RealtimeConnectionState = RealtimeConnectionState.DISCONNECTED,
+    val isSyncing: Boolean = false,
 )
 
 @HiltViewModel
@@ -101,6 +104,7 @@ class ConversationViewModel @Inject constructor(
         observeCachedConversation()
         observeMergedMessages()
         observeRealtimeEvents()
+        observeRealtimeConnectionState()
         observeAttachmentDownloadEvents()
         loadConversation()
     }
@@ -500,6 +504,16 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
+    private fun observeRealtimeConnectionState() {
+        viewModelScope.launch {
+            realtimeWebSocketManager.connectionState.collect { connectionState ->
+                _state.value = _state.value.copy(
+                    realtimeState = connectionState,
+                )
+            }
+        }
+    }
+
     private fun observeAttachmentDownloadEvents() {
         viewModelScope.launch {
             attachmentDownloadManager.events.collect { event: AttachmentDownloadEvent ->
@@ -577,42 +591,48 @@ class ConversationViewModel @Inject constructor(
     private suspend fun syncConversation() {
         val currentConversationId = _state.value.conversationId ?: return
 
-        syncMutex.withLock {
-            var cursor = chatCacheRepository.getLastEventId(currentConversationId)
-            var requiresReload = false
-            var processedAnyEvents = false
+        _state.value = _state.value.copy(isSyncing = true)
 
-            while (true) {
-                val page = syncRepository.getConversationEvents(
-                    conversationId = currentConversationId,
-                    afterEventId = cursor,
-                    limit = EVENTS_PAGE_SIZE,
-                )
+        try {
+            syncMutex.withLock {
+                var cursor = chatCacheRepository.getLastEventId(currentConversationId)
+                var requiresReload = false
+                var processedAnyEvents = false
 
-                val events = page.items
-                if (events.isEmpty()) break
+                while (true) {
+                    val page = syncRepository.getConversationEvents(
+                        conversationId = currentConversationId,
+                        afterEventId = cursor,
+                        limit = EVENTS_PAGE_SIZE,
+                    )
 
-                processedAnyEvents = true
+                    val events = page.items
+                    if (events.isEmpty()) break
 
-                events.forEach { event ->
-                    cursor = event.eventId
-                    chatCacheRepository.setLastEventId(currentConversationId, event.eventId)
-                    requiresReload = processConversationEvent(event) || requiresReload
+                    processedAnyEvents = true
+
+                    events.forEach { event ->
+                        cursor = event.eventId
+                        chatCacheRepository.setLastEventId(currentConversationId, event.eventId)
+                        requiresReload = processConversationEvent(event) || requiresReload
+                    }
+
+                    if (!page.hasMore) break
                 }
 
-                if (!page.hasMore) break
-            }
+                if (requiresReload) {
+                    reloadMessages(
+                        markDelivered = true,
+                        markRead = true,
+                    )
+                }
 
-            if (requiresReload) {
-                reloadMessages(
-                    markDelivered = true,
-                    markRead = true,
-                )
+                if (processedAnyEvents) {
+                    conversationsRefreshBus.requestRefresh()
+                }
             }
-
-            if (processedAnyEvents) {
-                conversationsRefreshBus.requestRefresh()
-            }
+        } finally {
+            _state.value = _state.value.copy(isSyncing = false)
         }
     }
 
