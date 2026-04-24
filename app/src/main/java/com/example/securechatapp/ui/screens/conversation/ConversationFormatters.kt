@@ -27,12 +27,12 @@ fun buildConversationRows(
         val nextMessage = messages.getOrNull(index + 1)
 
         val sameAsPrevious = previousMessage != null &&
-                previousMessage.isMine == message.isMine &&
-                parseLocalDate(previousMessage.createdAt) == currentDate
+            previousMessage.isMine == message.isMine &&
+            parseLocalDate(previousMessage.createdAt) == currentDate
 
         val sameAsNext = nextMessage != null &&
-                nextMessage.isMine == message.isMine &&
-                parseLocalDate(nextMessage.createdAt) == currentDate
+            nextMessage.isMine == message.isMine &&
+            parseLocalDate(nextMessage.createdAt) == currentDate
 
         val position = when {
             sameAsPrevious && sameAsNext -> MessageGroupPosition.MIDDLE
@@ -52,60 +52,44 @@ fun buildConversationRows(
 
 fun buildConversationSubtitle(
     messages: List<ChatMessage>,
-    realtimeState: RealtimeConnectionState,
+    connectionState: RealtimeConnectionState,
     isSyncing: Boolean,
 ): String {
-    val activityText = if (messages.isEmpty()) {
-        "начните защищённый диалог"
-    } else {
-        val last = messages.last()
-        val lastDate = parseLocalDate(last.createdAt)
-        val today = LocalDate.now()
-
-        when (lastDate) {
-            null -> "защищённый чат"
-            today -> "был(а) недавно"
-            today.minusDays(1) -> "был(а) вчера"
-            else -> {
-                val text = runCatching {
-                    OffsetDateTime.parse(last.createdAt)
-                        .format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
-                }.getOrDefault("")
-                if (text.isBlank()) "защищённый чат" else "последняя активность $text"
-            }
-        }
-    }
-
-    val prefix = when {
-        isSyncing -> "синхронизация"
-        realtimeState == RealtimeConnectionState.RECONNECTING -> "переподключение"
-        realtimeState == RealtimeConnectionState.CONNECTING -> "подключение"
-        realtimeState == RealtimeConnectionState.DISCONNECTED -> "офлайн"
+    val transportLabel = when {
+        isSyncing -> "синхронизация…"
+        connectionState == RealtimeConnectionState.CONNECTING -> "подключение…"
+        connectionState == RealtimeConnectionState.RECONNECTING -> "переподключение…"
+        connectionState == RealtimeConnectionState.DISCONNECTED -> "realtime оффлайн"
         else -> null
     }
 
-    return listOfNotNull(prefix, activityText).joinToString(" · ")
-}
-
-fun realtimeBannerText(
-    realtimeState: RealtimeConnectionState,
-): String? {
-    return when (realtimeState) {
-        RealtimeConnectionState.CONNECTED -> null
-        RealtimeConnectionState.CONNECTING -> "Подключаем realtime…"
-        RealtimeConnectionState.RECONNECTING -> "Переподключаем realtime…"
-        RealtimeConnectionState.DISCONNECTED -> "Realtime недоступен. История и отправка продолжат синхронизацию при восстановлении сети."
+    val activityLabel = when {
+        messages.isEmpty() -> "защищённый чат"
+        else -> buildLastActivityLabel(messages.last())
     }
+
+    return listOfNotNull(transportLabel, activityLabel)
+        .joinToString(" • ")
+        .ifBlank { "защищённый чат" }
 }
 
-fun realtimeStatusLabel(
-    realtimeState: RealtimeConnectionState,
+private fun buildLastActivityLabel(
+    lastMessage: ChatMessage,
 ): String {
-    return when (realtimeState) {
-        RealtimeConnectionState.CONNECTED -> "secure connection"
-        RealtimeConnectionState.CONNECTING -> "connecting…"
-        RealtimeConnectionState.RECONNECTING -> "reconnecting…"
-        RealtimeConnectionState.DISCONNECTED -> "offline mode"
+    val lastDate = parseLocalDate(lastMessage.createdAt)
+    val today = LocalDate.now()
+
+    return when (lastDate) {
+        null -> "защищённый чат"
+        today -> "был(а) недавно"
+        today.minusDays(1) -> "был(а) вчера"
+        else -> {
+            val text = runCatching {
+                OffsetDateTime.parse(lastMessage.createdAt)
+                    .format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
+            }.getOrDefault("")
+            if (text.isBlank()) "защищённый чат" else "последняя активность $text"
+        }
     }
 }
 
@@ -121,7 +105,7 @@ fun formatDateSeparator(date: LocalDate): String {
         today -> "Сегодня"
         today.minusDays(1) -> "Вчера"
         else -> date.format(
-            DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
+            DateTimeFormatter.ofPattern("d MMMM", Locale("ru")),
         )
     }
 }

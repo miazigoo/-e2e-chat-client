@@ -20,7 +20,7 @@ class OutboxDispatcher @Inject constructor(
 
     suspend fun drainAll() {
         mutex.withLock {
-            val pendingMessages = outboxRepository.listQueuedMessages()
+            val pendingMessages = outboxRepository.listDueMessages()
             pendingMessages.forEach { pending ->
                 dispatchPendingMessage(pending)
             }
@@ -29,7 +29,7 @@ class OutboxDispatcher @Inject constructor(
 
     suspend fun drainConversation(conversationId: Int) {
         mutex.withLock {
-            val pendingMessages = outboxRepository.listQueuedMessages(conversationId)
+            val pendingMessages = outboxRepository.listDueMessages(conversationId)
             pendingMessages.forEach { pending ->
                 dispatchPendingMessage(pending)
             }
@@ -41,6 +41,10 @@ class OutboxDispatcher @Inject constructor(
             val pending = outboxRepository.getPendingMessage(localMessageId) ?: return
             dispatchPendingMessage(pending)
         }
+    }
+
+    suspend fun nextRetryDelayMillis(): Long? {
+        return outboxRepository.getNextAttemptDelayMillis()
     }
 
     private suspend fun dispatchPendingMessage(
@@ -61,10 +65,13 @@ class OutboxDispatcher @Inject constructor(
             outboxRepository.deletePendingMessage(pending.localMessageId)
             conversationsRefreshBus.requestRefresh()
         } catch (e: Exception) {
-            outboxRepository.markFailed(
-                localMessageId = pending.localMessageId,
+            val willRetry = outboxRepository.scheduleRetryOrMarkFailed(
+                pending = pending,
                 errorMessage = e.message ?: "Не удалось отправить сообщение",
             )
+            if (!willRetry) {
+                conversationsRefreshBus.requestRefresh()
+            }
         }
     }
 }

@@ -1,26 +1,15 @@
 package com.example.securechatapp.ui.screens.conversation
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -136,11 +125,7 @@ fun Banner(
 }
 
 @Composable
-fun EmptyConversationHint(
-    text: String,
-    actionLabel: String? = null,
-    onActionClick: (() -> Unit)? = null,
-) {
+fun EmptyConversationHint(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -148,114 +133,13 @@ fun EmptyConversationHint(
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            tonalElevation = 1.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                if (actionLabel != null && onActionClick != null) {
-                    Button(
-                        onClick = onActionClick,
-                        shape = RoundedCornerShape(999.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            contentColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Text(actionLabel)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun InlineActionChip(
-    text: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .padding(vertical = 6.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        tonalElevation = 1.dp,
-        shadowElevation = 1.dp,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-        )
-    }
-}
-
-@Composable
-fun ConversationLoadingSkeleton() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        repeat(5) { index ->
-            val isMine = index % 2 == 0
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
-            ) {
-                Surface(
-                    modifier = Modifier.width(if (index % 3 == 0) 210.dp else 160.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 12.dp, vertical = 18.dp)
-                            .size(1.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun BoxScope.JumpToBottomButton(
-    visible: Boolean,
-    onClick: () -> Unit,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = 16.dp, bottom = 96.dp),
-    ) {
-        Surface(
-            modifier = Modifier.clickable(onClick = onClick),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary,
-            shadowElevation = 8.dp,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
         ) {
             Text(
-                text = "↓",
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.titleMedium,
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             )
         }

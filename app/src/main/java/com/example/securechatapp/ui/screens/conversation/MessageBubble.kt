@@ -1,10 +1,6 @@
 package com.example.securechatapp.ui.screens.conversation
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -32,9 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessageSendStatus
@@ -85,22 +78,12 @@ fun MessageBubble(
         msg.text
     }
 
-    val showTail = groupPosition == MessageGroupPosition.SINGLE || groupPosition == MessageGroupPosition.END
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = topPadding, bottom = bottomPadding),
         horizontalArrangement = if (msg.isMine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom,
     ) {
-        if (!msg.isMine && showTail) {
-            BubbleTail(
-                color = bubbleColor,
-                isMine = false,
-            )
-        }
-
         Box(
             modifier = Modifier.fillMaxWidth(0.82f),
         ) {
@@ -123,38 +106,31 @@ fun MessageBubble(
                 Column(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    AnimatedVisibility(
-                        visible = msg.hasAttachments,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                    ) {
-                        Column {
-                            TextButton(
-                                onClick = onAttachmentsClick,
-                                contentPadding = PaddingValues(0.dp),
-                            ) {
-                                Text(
-                                    text = attachmentLabel(msg),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-
-                            if (bodyText.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                            }
+                    if (msg.hasAttachments) {
+                        TextButton(
+                            onClick = onAttachmentsClick,
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = "📎 Открыть вложения",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                         }
+
+                        Spacer(modifier = Modifier.height(2.dp))
                     }
 
-                    if (bodyText.isNotBlank()) {
-                        Text(
-                            text = bodyText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
+                    Text(
+                        text = bodyText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
 
-                    if (msg.sendStatus == MessageSendStatus.FAILED && !msg.errorMessage.isNullOrBlank()) {
+                    if (
+                        msg.sendStatus == MessageSendStatus.FAILED &&
+                        !msg.errorMessage.isNullOrBlank()
+                    ) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = msg.errorMessage,
@@ -179,10 +155,32 @@ fun MessageBubble(
                         if (msg.isMine) {
                             Spacer(modifier = Modifier.width(6.dp))
 
+                            val statusText = when (msg.sendStatus) {
+                                MessageSendStatus.SENDING -> "⏳"
+                                MessageSendStatus.FAILED -> "⚠"
+                                MessageSendStatus.SENT -> when {
+                                    msg.readAt != null -> "✓✓"
+                                    msg.deliveredAt != null -> "✓✓"
+                                    else -> "✓"
+                                }
+                            }
+
+                            val statusColor = when (msg.sendStatus) {
+                                MessageSendStatus.SENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                                MessageSendStatus.FAILED -> MaterialTheme.colorScheme.error
+                                MessageSendStatus.SENT -> {
+                                    if (msg.readAt != null) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                }
+                            }
+
                             Text(
-                                text = statusText(msg),
+                                text = statusText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = statusColor(msg),
+                                color = statusColor,
                             )
                         }
                     }
@@ -232,87 +230,6 @@ fun MessageBubble(
                 }
             }
         }
-
-        if (msg.isMine && showTail) {
-            BubbleTail(
-                color = bubbleColor,
-                isMine = true,
-            )
-        }
-    }
-}
-
-@Composable
-private fun BubbleTail(
-    color: androidx.compose.ui.graphics.Color,
-    isMine: Boolean,
-) {
-    Canvas(
-        modifier = Modifier
-            .width(10.dp)
-            .height(14.dp),
-    ) {
-        val path = Path().apply {
-            if (isMine) {
-                moveTo(0f, size.height)
-                lineTo(size.width, size.height)
-                lineTo(size.width, 0f)
-                quadraticBezierTo(
-                    x1 = size.width * 0.25f,
-                    y1 = size.height * 0.35f,
-                    x2 = 0f,
-                    y2 = size.height,
-                )
-            } else {
-                moveTo(0f, 0f)
-                lineTo(0f, size.height)
-                lineTo(size.width, size.height)
-                quadraticBezierTo(
-                    x1 = size.width * 0.75f,
-                    y1 = size.height * 0.35f,
-                    x2 = 0f,
-                    y2 = 0f,
-                )
-            }
-            close()
-        }
-        drawPath(
-            path = path,
-            color = color,
-        )
-    }
-}
-
-private fun attachmentLabel(msg: ChatMessage): String {
-    return when (msg.attachments.size) {
-        0 -> "📎 Открыть вложения"
-        1 -> "📎 ${msg.attachments.first().fileName}"
-        else -> "📎 Вложения (${msg.attachments.size})"
-    }
-}
-
-private fun statusText(msg: ChatMessage): String {
-    return when (msg.sendStatus) {
-        MessageSendStatus.SENDING -> "⏳"
-        MessageSendStatus.FAILED -> "⚠"
-        MessageSendStatus.SENT -> when {
-            msg.readAt != null -> "✓✓"
-            msg.deliveredAt != null -> "✓✓"
-            else -> "✓"
-        }
-    }
-}
-
-@Composable
-private fun statusColor(msg: ChatMessage) = when (msg.sendStatus) {
-    MessageSendStatus.SENDING -> MaterialTheme.colorScheme.onSurfaceVariant
-    MessageSendStatus.FAILED -> MaterialTheme.colorScheme.error
-    MessageSendStatus.SENT -> {
-        if (msg.readAt != null) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        }
     }
 }
 
@@ -325,22 +242,22 @@ private fun bubbleShape(
             MessageGroupPosition.SINGLE ->
                 RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp)
             MessageGroupPosition.START ->
-                RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 6.dp)
+                RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 8.dp, bottomEnd = 6.dp)
             MessageGroupPosition.MIDDLE ->
-                RoundedCornerShape(topStart = 18.dp, topEnd = 12.dp, bottomStart = 10.dp, bottomEnd = 6.dp)
+                RoundedCornerShape(topStart = 18.dp, topEnd = 10.dp, bottomStart = 8.dp, bottomEnd = 6.dp)
             MessageGroupPosition.END ->
-                RoundedCornerShape(topStart = 18.dp, topEnd = 12.dp, bottomStart = 18.dp, bottomEnd = 6.dp)
+                RoundedCornerShape(topStart = 18.dp, topEnd = 10.dp, bottomStart = 18.dp, bottomEnd = 6.dp)
         }
     } else {
         when (groupPosition) {
             MessageGroupPosition.SINGLE ->
                 RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 18.dp)
             MessageGroupPosition.START ->
-                RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 10.dp)
+                RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 8.dp)
             MessageGroupPosition.MIDDLE ->
-                RoundedCornerShape(topStart = 12.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 10.dp)
+                RoundedCornerShape(topStart = 10.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 8.dp)
             MessageGroupPosition.END ->
-                RoundedCornerShape(topStart = 12.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 18.dp)
+                RoundedCornerShape(topStart = 10.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 18.dp)
         }
     }
 }

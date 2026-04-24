@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,15 +26,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.ui.viewmodel.ConversationViewModel
-import kotlin.math.max
-import kotlin.math.min
 import kotlinx.coroutines.launch
-
-private const val INITIAL_VISIBLE_ROWS = 40
-private const val VISIBLE_ROWS_STEP = 30
+import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
+import com.example.securechatapp.ui.components.RealtimeStatusBanner
+import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 
 @Composable
 fun ConversationScreen(
@@ -40,15 +41,14 @@ fun ConversationScreen(
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
 
     var message by remember { mutableStateOf("") }
     var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAttachmentName by remember { mutableStateOf<String?>(null) }
-    var visibleRowsCount by remember { mutableStateOf(INITIAL_VISIBLE_ROWS) }
-    var previousTotalRows by remember { mutableStateOf(0) }
+    var previousRowCount by remember { mutableStateOf(0) }
 
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     BackHandler(onBack = onBack)
 
@@ -63,70 +63,32 @@ fun ConversationScreen(
         buildConversationRows(state.messages)
     }
 
-    val subtitle = remember(state.messages, state.realtimeState, state.isSyncing) {
+    val subtitle = remember(
+        state.messages,
+        state.connectionState,
+        state.isSyncing,
+    ) {
         buildConversationSubtitle(
             messages = state.messages,
-            realtimeState = state.realtimeState,
+            connectionState = state.connectionState,
             isSyncing = state.isSyncing,
         )
     }
 
-    val boundedVisibleRowsCount = min(
-        visibleRowsCount,
-        max(conversationRows.size, INITIAL_VISIBLE_ROWS),
-    )
-    val visibleRows = remember(conversationRows, boundedVisibleRowsCount) {
-        if (conversationRows.size <= boundedVisibleRowsCount) {
-            conversationRows
-        } else {
-            conversationRows.takeLast(boundedVisibleRowsCount)
-        }
-    }
-    val hiddenRowsCount = (conversationRows.size - visibleRows.size).coerceAtLeast(0)
-
-    val isAtBottom by remember(listState, visibleRows) {
+    val isNearBottom by remember(listState, conversationRows.size) {
         derivedStateOf {
-            if (visibleRows.isEmpty()) {
-                true
-            } else {
-                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                lastVisible >= visibleRows.lastIndex - 1
-            }
-        }
-    }
-
-    val shouldLoadMore by remember(listState, hiddenRowsCount) {
-        derivedStateOf {
-            hiddenRowsCount > 0 && listState.firstVisibleItemIndex <= 2
-        }
-    }
-
-    val showJumpToBottom by remember(isAtBottom, state.messages) {
-        derivedStateOf {
-            !isAtBottom && state.messages.isNotEmpty()
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val totalItems = listState.layoutInfo.totalItemsCount
+            totalItems == 0 || lastVisibleIndex >= totalItems - 3
         }
     }
 
     LaunchedEffect(conversationRows.size) {
-        if (conversationRows.size < previousTotalRows) {
-            visibleRowsCount = max(INITIAL_VISIBLE_ROWS, visibleRowsCount)
+        val shouldScroll = previousRowCount == 0 || isNearBottom
+        if (conversationRows.isNotEmpty() && shouldScroll) {
+            listState.animateScrollToItem(conversationRows.lastIndex)
         }
-
-        val shouldStickToBottom = previousTotalRows == 0 || isAtBottom
-        previousTotalRows = conversationRows.size
-
-        if (shouldStickToBottom && visibleRows.isNotEmpty()) {
-            listState.animateScrollToItem(visibleRows.lastIndex)
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore) {
-            visibleRowsCount = min(
-                visibleRowsCount + VISIBLE_ROWS_STEP,
-                max(conversationRows.size, visibleRowsCount),
-            )
-        }
+        previousRowCount = conversationRows.size
     }
 
     Box(
@@ -140,15 +102,20 @@ fun ConversationScreen(
             ConversationTopBar(
                 title = if (state.title.isBlank()) "Диалог" else state.title,
                 subtitle = subtitle,
+                connectionState = state.connectionState,
+                isSyncing = state.isSyncing,
                 onBack = onBack,
-                onRefresh = viewModel::refreshConversation,
                 onLogout = { viewModel.logout(onLoggedOut) },
                 isLoggingOut = state.isLoggingOut,
-                realtimeState = state.realtimeState,
             )
 
-            realtimeBannerText(state.realtimeState)?.let {
-                Banner(text = it)
+            if (state.connectionState != RealtimeConnectionState.CONNECTED) {
+                RealtimeStatusBanner(
+                    connectionState = state.connectionState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
 
             state.error?.let {
@@ -159,73 +126,83 @@ fun ConversationScreen(
                 Banner(text = it)
             }
 
-            LazyColumn(
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                state = listState,
-                contentPadding = PaddingValues(bottom = 8.dp),
+                    .fillMaxWidth(),
             ) {
-                if (hiddenRowsCount > 0) {
-                    item("load_more") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    state = listState,
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                ) {
+                    if (state.isLoading && state.messages.isEmpty()) {
+                        item {
+                            EmptyConversationHint("Загрузка сообщений...")
+                        }
+                    }
+
+                    if (!state.isLoading && state.messages.isEmpty()) {
+                        item {
+                            EmptyConversationHint("Начни диалог первым сообщением")
+                        }
+                    }
+
+                    items(
+                        items = conversationRows,
+                        key = { it.key },
+                    ) { row ->
+                        when (row) {
+                            is ConversationRow.DateSeparator -> {
+                                DateSeparatorChip(text = row.label)
+                            }
+
+                            is ConversationRow.MessageItem -> {
+                                MessageBubble(
+                                    msg = row.message,
+                                    groupPosition = row.groupPosition,
+                                    isDeleting = state.deletingMessageIds.contains(row.message.messageId),
+                                    onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },
+                                    onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
+                                    onAttachmentsClick = {
+                                        viewModel.showMessageAttachments(row.message)
+                                    },
+                                    onRetrySend = {
+                                        viewModel.retryFailedMessage(row.message.messageId)
+                                    },
+                                    onRemovePending = {
+                                        viewModel.removePendingMessage(row.message.messageId)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (conversationRows.isNotEmpty() && !isNearBottom) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        shadowElevation = 4.dp,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    if (conversationRows.isNotEmpty()) {
+                                        listState.animateScrollToItem(conversationRows.lastIndex)
+                                    }
+                                }
+                                viewModel.clearMessage()
+                            },
                         ) {
-                            InlineActionChip(
-                                text = "Показать более ранние сообщения ($hiddenRowsCount)",
-                                onClick = {
-                                    visibleRowsCount = min(
-                                        visibleRowsCount + VISIBLE_ROWS_STEP,
-                                        conversationRows.size,
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-
-                if (state.isLoading && state.messages.isEmpty()) {
-                    item("loading") {
-                        ConversationLoadingSkeleton()
-                    }
-                }
-
-                if (!state.isLoading && state.messages.isEmpty()) {
-                    item("empty") {
-                        EmptyConversationHint(
-                            text = "Начни диалог первым сообщением",
-                            actionLabel = "Обновить чат",
-                            onActionClick = viewModel::refreshConversation,
-                        )
-                    }
-                }
-
-                items(
-                    items = visibleRows,
-                    key = { it.key },
-                ) { row ->
-                    when (row) {
-                        is ConversationRow.DateSeparator -> {
-                            DateSeparatorChip(text = row.label)
-                        }
-
-                        is ConversationRow.MessageItem -> {
-                            MessageBubble(
-                                msg = row.message,
-                                groupPosition = row.groupPosition,
-                                isDeleting = state.deletingMessageIds.contains(row.message.messageId),
-                                onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },
-                                onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
-                                onAttachmentsClick = {
-                                    viewModel.showMessageAttachments(row.message)
-                                },
-                                onRetrySend = {
-                                    viewModel.retryFailedMessage(row.message.messageId)
-                                },
-                                onRemovePending = {
-                                    viewModel.removePendingMessage(row.message.messageId)
-                                },
+                            Text(
+                                text = "К новым ↓",
+                                color = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
                     }
@@ -237,7 +214,7 @@ fun ConversationScreen(
                 attachmentName = pendingAttachmentName,
                 onMessageChange = { message = it },
                 onAttachClick = { attachmentPicker.launch("*/*") },
-                onClearAttachment = {
+                onRemoveAttachment = {
                     pendingAttachmentUri = null
                     pendingAttachmentName = null
                 },
@@ -259,17 +236,6 @@ fun ConversationScreen(
             )
         }
 
-        JumpToBottomButton(
-            visible = showJumpToBottom,
-            onClick = {
-                if (visibleRows.isNotEmpty()) {
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(visibleRows.lastIndex)
-                    }
-                }
-            },
-        )
-
         if (state.attachmentSheetMessageId != null) {
             MessageAttachmentsDialog(
                 attachments = state.selectedMessageAttachments,
@@ -279,7 +245,7 @@ fun ConversationScreen(
                 onDismiss = viewModel::dismissMessageAttachments,
                 onAttachmentClick = { attachment ->
                     viewModel.onAttachmentSelected(attachment)
-                }
+                },
             )
         }
 

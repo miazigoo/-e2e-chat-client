@@ -2,13 +2,13 @@ package com.example.securechatapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val TgBlue = Color(0xFF2481CC)
-val TgBlueDark = Color(0xFF1F6FB2)
-val TgBlueLight = Color(0xFFE8F3FC)
+val TgBlue = Color(0xFF229ED9)
+val TgBlueDark = Color(0xFF1D8EC6)
+val TgBlueLight = Color(0xFFE9F5FC)
 
 val TgBackground = Color(0xFFF4F6F8)
 val TgSurface = Color(0xFFFFFFFF)
-val TgSurfaceAlt = Color(0xFFEFF3F6)
+val TgSurfaceAlt = Color(0xFFF0F3F5)
 
 val TgTextPrimary = Color(0xFF18222D)
 val TgTextSecondary = Color(0xFF708499)

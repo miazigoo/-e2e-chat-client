@@ -112,6 +112,21 @@ class ChatCacheRepository @Inject constructor(
         )
     }
 
+
+    suspend fun updateConversationSnapshotFromMessages(
+        conversationId: Int,
+        messages: List<ChatMessage>,
+    ) {
+        val lastMessage = messages.lastOrNull() ?: return
+        val preview = buildConversationPreview(lastMessage)
+
+        conversationsDao.updateLastMessageSnapshot(
+            conversationId = conversationId,
+            lastMessagePreview = preview,
+            updatedAt = lastMessage.createdAt,
+        )
+    }
+
     suspend fun getLastEventId(
         conversationId: Int,
     ): Int? {
@@ -126,5 +141,23 @@ class ChatCacheRepository @Inject constructor(
             conversationId = conversationId,
             lastEventId = lastEventId,
         )
+    }
+
+    private fun buildConversationPreview(
+        message: ChatMessage,
+    ): String {
+        val body = when {
+            message.hasAttachments && message.text.isBlank() -> "📎 Вложение"
+            message.hasAttachments && message.text == "[attachment]" -> "📎 Вложение"
+            message.hasAttachments -> "📎 ${message.text}"
+            message.text.isBlank() -> "Сообщение"
+            else -> message.text
+        }.take(120)
+
+        return if (message.isMine) {
+            "Вы: $body"
+        } else {
+            body
+        }
     }
 }

@@ -116,8 +116,22 @@ class AppRuntimeManager @Inject constructor(
                 runCatching {
                     outboxDispatcher.drainAll()
                 }
-                delay(8_000L)
+                val retryDelay = runCatching {
+                    outboxDispatcher.nextRetryDelayMillis()
+                }.getOrNull()
+
+                delay(
+                    retryDelay
+                        ?.coerceIn(MIN_OUTBOX_LOOP_DELAY_MILLIS, MAX_OUTBOX_LOOP_DELAY_MILLIS)
+                        ?: DEFAULT_OUTBOX_LOOP_DELAY_MILLIS
+                )
             }
         }
+    }
+
+    private companion object {
+        const val MIN_OUTBOX_LOOP_DELAY_MILLIS = 2_000L
+        const val DEFAULT_OUTBOX_LOOP_DELAY_MILLIS = 8_000L
+        const val MAX_OUTBOX_LOOP_DELAY_MILLIS = 60_000L
     }
 }

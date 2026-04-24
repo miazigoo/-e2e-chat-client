@@ -31,6 +31,8 @@ data class PendingOutgoingMessage(
     val createdAt: String,
     val status: MessageSendStatus,
     val errorMessage: String? = null,
+    val attemptCount: Int = 0,
+    val nextAttemptAtEpochMillis: Long = 0L,
 )
 
 @Singleton
@@ -81,6 +83,9 @@ class OutboxRepository @Inject constructor(
             createdAt = createdAt,
             status = STATUS_QUEUED,
             errorMessage = null,
+            attemptCount = 0,
+            lastAttemptAtEpochMillis = null,
+            nextAttemptAtEpochMillis = 0L,
         )
 
         dao.upsert(entity)
@@ -93,17 +98,35 @@ class OutboxRepository @Inject constructor(
         return dao.getByLocalMessageId(localMessageId)?.toPending()
     }
 
-    suspend fun listQueuedMessages(): List<PendingOutgoingMessage> {
-        return dao.listByStatus(STATUS_QUEUED).map { it.toPending() }
+    suspend fun listDueMessages(
+        limit: Int = DEFAULT_DRAIN_BATCH_SIZE,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): List<PendingOutgoingMessage> {
+        return dao.listDueByStatus(
+            status = STATUS_QUEUED,
+            nowEpochMillis = nowEpochMillis,
+            limit = limit,
+        ).map { it.toPending() }
     }
 
-    suspend fun listQueuedMessages(
+    suspend fun listDueMessages(
         conversationId: Int,
+        limit: Int = DEFAULT_DRAIN_BATCH_SIZE,
+        nowEpochMillis: Long = System.currentTimeMillis(),
     ): List<PendingOutgoingMessage> {
-        return dao.listByConversationAndStatus(
+        return dao.listDueByConversationAndStatus(
             conversationId = conversationId,
             status = STATUS_QUEUED,
+            nowEpochMillis = nowEpochMillis,
+            limit = limit,
         ).map { it.toPending() }
+    }
+
+    suspend fun getNextAttemptDelayMillis(
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): Long? {
+        val nextAttemptAt = dao.getNextAttemptAt(STATUS_QUEUED) ?: return null
+        return (nextAttemptAt - nowEpochMillis).coerceAtLeast(0L)
     }
 
     suspend fun markSending(
@@ -113,28 +136,39 @@ class OutboxRepository @Inject constructor(
             localMessageId = localMessageId,
             status = STATUS_SENDING,
             errorMessage = null,
+            lastAttemptAtEpochMillis = System.currentTimeMillis(),
         )
     }
 
-    suspend fun markFailed(
-        localMessageId: Int,
+    suspend fun scheduleRetryOrMarkFailed(
+        pending: PendingOutgoingMessage,
         errorMessage: String?,
-    ) {
-        dao.updateStatus(
-            localMessageId = localMessageId,
-            status = STATUS_FAILED,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val nextAttemptCount = pending.attemptCount + 1
+        val exhausted = nextAttemptCount >= MAX_ATTEMPTS
+        val nextDelayMillis = if (exhausted) {
+            0L
+        } else {
+            calculateBackoffDelayMillis(nextAttemptCount)
+        }
+
+        dao.updateRetryState(
+            localMessageId = pending.localMessageId,
+            status = if (exhausted) STATUS_FAILED else STATUS_QUEUED,
             errorMessage = errorMessage,
+            attemptCount = nextAttemptCount,
+            lastAttemptAtEpochMillis = nowEpochMillis,
+            nextAttemptAtEpochMillis = if (exhausted) nowEpochMillis else nowEpochMillis + nextDelayMillis,
         )
+
+        return !exhausted
     }
 
     suspend fun requeueFailedMessage(
         localMessageId: Int,
     ) {
-        dao.updateStatus(
-            localMessageId = localMessageId,
-            status = STATUS_QUEUED,
-            errorMessage = null,
-        )
+        dao.resetForManualRetry(localMessageId)
     }
 
     suspend fun requeueSendingMessages(
@@ -244,6 +278,8 @@ class OutboxRepository @Inject constructor(
             createdAt = createdAt,
             status = status.toMessageSendStatus(),
             errorMessage = errorMessage,
+            attemptCount = attemptCount,
+            nextAttemptAtEpochMillis = nextAttemptAtEpochMillis,
         )
     }
 
@@ -290,9 +326,23 @@ class OutboxRepository @Inject constructor(
         }
     }
 
+
+    private fun calculateBackoffDelayMillis(
+        attemptCount: Int,
+    ): Long {
+        val exponent = (attemptCount - 1).coerceIn(0, MAX_BACKOFF_EXPONENT)
+        val multiplier = 1L shl exponent
+        return (INITIAL_BACKOFF_MILLIS * multiplier).coerceAtMost(MAX_BACKOFF_MILLIS)
+    }
+
     private companion object {
         const val STATUS_QUEUED = "queued"
         const val STATUS_SENDING = "sending"
         const val STATUS_FAILED = "failed"
+        const val DEFAULT_DRAIN_BATCH_SIZE = 25
+        const val MAX_ATTEMPTS = 10
+        const val MAX_BACKOFF_EXPONENT = 9
+        const val INITIAL_BACKOFF_MILLIS = 5_000L
+        const val MAX_BACKOFF_MILLIS = 60 * 60 * 1000L
     }
 }

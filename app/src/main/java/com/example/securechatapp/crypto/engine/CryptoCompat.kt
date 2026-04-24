@@ -1,44 +1,53 @@
 package com.example.securechatapp.crypto.engine
 
-import android.util.Base64
 import java.security.SecureRandom
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Base64
 
-data class EncryptedPlainTextPayload(
+data class EncryptedTextPayload(
     val ciphertext: String,
     val nonce: String,
 )
 
-fun CryptoEngine.nowIso(): String {
-    return OffsetDateTime.now(ZoneOffset.UTC).toString()
-}
+private val secureRandom = SecureRandom()
 
-fun CryptoEngine.encryptPlainText(
-    plainText: String,
-): EncryptedPlainTextPayload {
+fun CryptoEngine.encryptPlainText(plainText: String): EncryptedTextPayload {
     val ciphertext = encrypt(plainText)
-    val nonce = runCatching {
-        val decoded = Base64.decode(ciphertext, Base64.NO_WRAP)
-        Base64.encodeToString(decoded.copyOfRange(0, 12), Base64.NO_WRAP)
-    }.getOrDefault("")
+    val nonce = extractNonceFromCiphertext(ciphertext) ?: randomBase64(12)
 
-    return EncryptedPlainTextPayload(
+    return EncryptedTextPayload(
         ciphertext = ciphertext,
         nonce = nonce,
     )
 }
 
-fun CryptoEngine.decryptToPlainText(
-    ciphertext: String,
-): String {
-    return decrypt(ciphertext)
+fun CryptoEngine.decryptToPlainText(cipherText: String): String {
+    return decrypt(cipherText)
 }
 
-fun CryptoEngine.randomBase64(
-    sizeBytes: Int,
-): String {
-    val bytes = ByteArray(sizeBytes.coerceAtLeast(1))
-    SecureRandom().nextBytes(bytes)
-    return Base64.encodeToString(bytes, Base64.NO_WRAP)
+fun CryptoEngine.randomBase64(sizeBytes: Int): String {
+    require(sizeBytes > 0) { "sizeBytes must be greater than 0" }
+
+    val bytes = ByteArray(sizeBytes)
+    secureRandom.nextBytes(bytes)
+    return Base64.getEncoder().encodeToString(bytes)
+}
+
+fun CryptoEngine.nowIso(): String {
+    return OffsetDateTime.now(ZoneOffset.UTC)
+        .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+}
+
+private fun extractNonceFromCiphertext(ciphertext: String): String? {
+    return runCatching {
+        val decoded = Base64.getDecoder().decode(ciphertext)
+        if (decoded.size <= 12) {
+            return null
+        }
+
+        val iv = decoded.copyOfRange(0, 12)
+        Base64.getEncoder().encodeToString(iv)
+    }.getOrNull()
 }

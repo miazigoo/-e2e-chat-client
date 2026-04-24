@@ -47,6 +47,7 @@ data class ConversationUiState(
     val conversationId: Int? = null,
     val isLoading: Boolean = false,
     val isLoggingOut: Boolean = false,
+    val isSyncing: Boolean = false,
     val isUploadingAttachment: Boolean = false,
     val deletingMessageIds: Set<Int> = emptySet(),
     val error: String? = null,
@@ -54,6 +55,7 @@ data class ConversationUiState(
     val title: String = "",
     val peerUserId: Int? = null,
     val protectionMode: String = "normal",
+    val connectionState: RealtimeConnectionState = RealtimeConnectionState.DISCONNECTED,
     val messages: List<ChatMessage> = emptyList(),
     val attachmentSheetMessageId: Int? = null,
     val attachmentLocalStates: Map<Int, AttachmentLocalState> = emptyMap(),
@@ -66,8 +68,6 @@ data class ConversationUiState(
     val imagePreviewFileName: String? = null,
     val imagePreviewAttachment: AttachmentItem? = null,
     val isLoadingImagePreview: Boolean = false,
-    val realtimeState: RealtimeConnectionState = RealtimeConnectionState.DISCONNECTED,
-    val isSyncing: Boolean = false,
 )
 
 @HiltViewModel
@@ -104,7 +104,7 @@ class ConversationViewModel @Inject constructor(
         observeCachedConversation()
         observeMergedMessages()
         observeRealtimeEvents()
-        observeRealtimeConnectionState()
+        observeConnectionState()
         observeAttachmentDownloadEvents()
         loadConversation()
     }
@@ -113,30 +113,12 @@ class ConversationViewModel @Inject constructor(
         loadConversation()
     }
 
-    fun refreshConversation() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(
-                error = null,
-                info = null,
-                isLoading = _state.value.messages.isEmpty(),
-            )
-
-            runCatching {
-                reloadMessages(
-                    markDelivered = true,
-                    markRead = true,
-                )
-                outboxDispatcher.drainConversation(conversationId)
-                conversationsRefreshBus.requestRefresh()
-            }.onFailure {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = it.message ?: "Не удалось обновить чат",
-                )
-            }
-        }
+    fun clearMessage() {
+        _state.value = _state.value.copy(
+            error = null,
+            info = null,
+        )
     }
-
 
     fun sendMessage(
         text: String,
@@ -439,6 +421,7 @@ class ConversationViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
+                    isSyncing = false,
                     error = e.message,
                 )
             }
@@ -483,18 +466,32 @@ class ConversationViewModel @Inject constructor(
             realtimeWebSocketManager.events.collect { event ->
                 when (event) {
                     is RealtimeEvent.Connected -> {
-                        syncConversation()
+                        runCatching {
+                            syncConversation()
+                        }.onFailure {
+                            _state.value = _state.value.copy(
+                                isSyncing = false,
+                                info = it.message ?: "Не удалось синхронизировать диалог",
+                            )
+                        }
                     }
 
                     is RealtimeEvent.ConversationEvent -> {
                         if (event.conversationId == conversationId) {
-                            syncConversation()
+                            runCatching {
+                                syncConversation()
+                            }.onFailure {
+                                _state.value = _state.value.copy(
+                                    isSyncing = false,
+                                    info = it.message ?: "Не удалось обновить диалог",
+                                )
+                            }
                         }
                     }
 
                     is RealtimeEvent.Error -> {
                         _state.value = _state.value.copy(
-                            info = "Realtime: ${event.message}"
+                            info = "Realtime: ${event.message}",
                         )
                     }
 
@@ -504,11 +501,11 @@ class ConversationViewModel @Inject constructor(
         }
     }
 
-    private fun observeRealtimeConnectionState() {
+    private fun observeConnectionState() {
         viewModelScope.launch {
             realtimeWebSocketManager.connectionState.collect { connectionState ->
                 _state.value = _state.value.copy(
-                    realtimeState = connectionState,
+                    connectionState = connectionState,
                 )
             }
         }
@@ -591,10 +588,12 @@ class ConversationViewModel @Inject constructor(
     private suspend fun syncConversation() {
         val currentConversationId = _state.value.conversationId ?: return
 
-        _state.value = _state.value.copy(isSyncing = true)
+        syncMutex.withLock {
+            _state.value = _state.value.copy(
+                isSyncing = true,
+            )
 
-        try {
-            syncMutex.withLock {
+            try {
                 var cursor = chatCacheRepository.getLastEventId(currentConversationId)
                 var requiresReload = false
                 var processedAnyEvents = false
@@ -630,9 +629,11 @@ class ConversationViewModel @Inject constructor(
                 if (processedAnyEvents) {
                     conversationsRefreshBus.requestRefresh()
                 }
+            } finally {
+                _state.value = _state.value.copy(
+                    isSyncing = false,
+                )
             }
-        } finally {
-            _state.value = _state.value.copy(isSyncing = false)
         }
     }
 
@@ -702,9 +703,14 @@ class ConversationViewModel @Inject constructor(
             conversationId = currentConversationId,
             messages = messages,
         )
+        chatCacheRepository.updateConversationSnapshotFromMessages(
+            conversationId = currentConversationId,
+            messages = messages,
+        )
 
         _state.value = _state.value.copy(
             isLoading = false,
+            isSyncing = false,
             error = null,
         )
 
@@ -727,6 +733,10 @@ class ConversationViewModel @Inject constructor(
             )
 
             chatCacheRepository.replaceMessages(
+                conversationId = currentConversationId,
+                messages = refreshedMessages,
+            )
+            chatCacheRepository.updateConversationSnapshotFromMessages(
                 conversationId = currentConversationId,
                 messages = refreshedMessages,
             )
