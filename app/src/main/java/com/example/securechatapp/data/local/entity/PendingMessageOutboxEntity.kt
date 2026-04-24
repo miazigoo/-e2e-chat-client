@@ -10,7 +10,6 @@ import androidx.room.PrimaryKey
         Index(value = ["conversationId"]),
         Index(value = ["status"]),
         Index(value = ["conversationId", "status"]),
-        Index(value = ["status", "nextAttemptAtEpochMillis"]),
         Index(value = ["clientMessageUuid"], unique = true),
     ],
 )
@@ -28,7 +27,4 @@ data class PendingMessageOutboxEntity(
     val createdAt: String,
     val status: String,
     val errorMessage: String? = null,
-    val attemptCount: Int = 0,
-    val lastAttemptAtEpochMillis: Long? = null,
-    val nextAttemptAtEpochMillis: Long = 0L,
 )

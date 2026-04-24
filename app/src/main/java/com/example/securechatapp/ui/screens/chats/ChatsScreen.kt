@@ -10,14 +10,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,7 +27,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,16 +37,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
-import com.example.securechatapp.ui.components.RealtimeStatusBadge
-import com.example.securechatapp.ui.components.RealtimeStatusBanner
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
 
 @Composable
 fun ChatsScreen(
@@ -58,18 +54,12 @@ fun ChatsScreen(
     val state by viewModel.state.collectAsState()
     var search by remember { mutableStateOf("") }
 
-    LaunchedEffect(search) {
-        delay(if (search.isBlank()) 0L else 350L)
-        viewModel.searchUsers(search)
-    }
-
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             ChatsTopBar(
-                connectionState = state.connectionState,
                 onRefresh = viewModel::refreshConversations,
                 onOpenSettings = onOpenSettings,
                 onLogout = { viewModel.logout(onLoggedOut) },
@@ -81,29 +71,54 @@ fun ChatsScreen(
                     .fillMaxSize()
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
-                if (state.connectionState != RealtimeConnectionState.CONNECTED) {
-                    RealtimeStatusBanner(
-                        connectionState = state.connectionState,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = {
+                                search = it
+                                if (it.isBlank()) viewModel.searchUsers("")
+                            },
+                            label = { Text("Поиск пользователей") },
+                            placeholder = { Text("@username") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            ),
+                        )
 
-                SearchPanel(
-                    search = search,
-                    onSearchChange = { search = it },
-                    onClear = {
-                        search = ""
-                        viewModel.clearMessage()
-                    },
-                )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = { viewModel.searchUsers(search.trim()) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Text("Найти")
+                        }
+                    }
+                }
 
                 state.error?.let {
                     Spacer(modifier = Modifier.height(10.dp))
-                    InfoBanner(
-                        text = it,
-                        isError = true,
-                    )
+                    InfoBanner(text = it, isError = true)
                 }
 
                 state.info?.let {
@@ -113,34 +128,25 @@ fun ChatsScreen(
 
                 if (search.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    SectionTitle("Новый чат")
+                    SectionTitle("Результаты поиска")
 
-                    when {
-                        state.isSearching -> {
-                            SearchLoadingHint()
-                        }
+                    if (!state.isLoading && state.users.isEmpty()) {
+                        EmptyHint("Никого не найдено")
+                    }
 
-                        state.users.isEmpty() -> {
-                            EmptyHint("Никого не найдено")
-                        }
-
-                        else -> {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(state.users, key = { it.userId }) { user ->
-                                    SearchUserItem(
-                                        user = user,
-                                        onClick = {
-                                            viewModel.createConversation(user.userId) { conversationId ->
-                                                search = ""
-                                                onConversationClick(conversationId)
-                                            }
-                                        },
-                                    )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(state.users, key = { it.userId }) { user ->
+                            SearchUserItem(
+                                user = user,
+                                onClick = {
+                                    viewModel.createConversation(user.userId) { conversationId ->
+                                        onConversationClick(conversationId)
+                                    }
                                 }
-                            }
+                            )
                         }
                     }
 
@@ -149,44 +155,28 @@ fun ChatsScreen(
 
                 SectionTitle("Чаты")
 
-                when {
-                    state.isLoading && state.conversations.isEmpty() -> {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            items(count = 6) {
-                                ChatListSkeletonItem()
-                            }
-                        }
-                    }
+                if (state.isLoading && state.conversations.isEmpty()) {
+                    EmptyHint("Загрузка...")
+                }
 
-                    !state.isLoading && state.conversations.isEmpty() -> {
-                        EmptyStateCard(
-                            title = "Чатов пока нет",
-                            subtitle = "Найди собеседника по нику выше и начни защищённый диалог.",
+                if (!state.isLoading && state.conversations.isEmpty()) {
+                    EmptyHint("Чатов пока нет")
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    items(state.conversations, key = { it.conversationId }) { item ->
+                        ChatListItem(
+                            item = item,
+                            onClick = { onConversationClick(item.conversationId) }
                         )
-                    }
-
-                    else -> {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                        ) {
-                            items(state.conversations, key = { it.conversationId }) { item ->
-                                ChatListItem(
-                                    item = item,
-                                    onClick = { onConversationClick(item.conversationId) },
-                                )
-                                HorizontalDivider(
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                )
-                            }
-                        }
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        )
                     }
                 }
             }
@@ -196,141 +186,64 @@ fun ChatsScreen(
 
 @Composable
 private fun ChatsTopBar(
-    connectionState: RealtimeConnectionState,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding(),
+        modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
         shadowElevation = 6.dp,
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "✈",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Secure Chat",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "private messenger, tuned for production",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                TextButton(onClick = onOpenSettings) {
-                    Text("Настройки")
-                }
-
-                TextButton(onClick = onLogout) {
-                    Text(if (isLoggingOut) "..." else "Выйти")
-                }
+                Text(
+                    text = "✈",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RealtimeStatusBadge(connectionState = connectionState)
+            Spacer(modifier = Modifier.width(12.dp))
 
-                Spacer(modifier = Modifier.weight(1f))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Secure Chat",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "your private messenger",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
-                TextButton(onClick = onRefresh) {
-                    Text("Обновить")
-                }
+            TextButton(onClick = onOpenSettings) {
+                Text("Настройки")
+            }
+
+            TextButton(onClick = onRefresh) {
+                Text("Обновить")
+            }
+
+            TextButton(onClick = onLogout) {
+                Text(if (isLoggingOut) "..." else "Выйти")
             }
         }
-    }
-}
-
-@Composable
-private fun SearchPanel(
-    search: String,
-    onSearchChange: (String) -> Unit,
-    onClear: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-        ) {
-            OutlinedTextField(
-                value = search,
-                onValueChange = onSearchChange,
-                label = { Text("Поиск пользователей") },
-                placeholder = { Text("@username") },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                ),
-            )
-
-            if (search.isNotBlank()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(onClick = onClear) {
-                        Text("Очистить")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchLoadingHint() {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-    ) {
-        Text(
-            text = "Ищем пользователей…",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-        )
     }
 }
 
@@ -370,12 +283,6 @@ private fun SearchUserItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            Text(
-                text = "Открыть",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }
@@ -457,52 +364,6 @@ private fun ChatListItem(
 }
 
 @Composable
-private fun ChatListSkeletonItem() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.55f)
-                        .height(16.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun AvatarCircle(label: String) {
     val clean = label.trim().removePrefix("@")
     val letter = clean.firstOrNull()?.uppercase() ?: "?"
@@ -540,36 +401,6 @@ private fun EmptyHint(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(vertical = 12.dp),
     )
-}
-
-@Composable
-private fun EmptyStateCard(
-    title: String,
-    subtitle: String,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 @Composable
