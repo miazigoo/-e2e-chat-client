@@ -56,7 +56,7 @@ fun ConversationScreen(
         contract = ActivityResultContracts.GetContent(),
     ) { uri ->
         pendingAttachmentUri = uri
-        pendingAttachmentName = uri?.lastPathSegment ?: "attachment"
+        pendingAttachmentName = uri?.let { viewModel.getAttachmentDisplayName(it) }
     }
 
     val conversationRows = remember(state.messages) {
@@ -232,7 +232,7 @@ fun ConversationScreen(
                     }
                 },
                 isUploading = state.isUploadingAttachment,
-                uploadProgressPercent = state.attachmentUploadProgressPercent,
+                uploadProgress = state.attachmentUploadProgress,
                 sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
             )
         }
