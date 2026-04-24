@@ -49,7 +49,6 @@ data class ConversationUiState(
     val isLoggingOut: Boolean = false,
     val isSyncing: Boolean = false,
     val isUploadingAttachment: Boolean = false,
-    val attachmentUploadProgress: Float? = null,
     val deletingMessageIds: Set<Int> = emptySet(),
     val error: String? = null,
     val info: String? = null,
@@ -121,10 +120,6 @@ class ConversationViewModel @Inject constructor(
         )
     }
 
-    fun getAttachmentDisplayName(uri: Uri): String {
-        return attachmentUploadManager.getAttachmentFileInfo(uri).displayName
-    }
-
     fun sendMessage(
         text: String,
         attachmentUri: Uri? = null,
@@ -139,7 +134,6 @@ class ConversationViewModel @Inject constructor(
                 error = null,
                 info = null,
                 isUploadingAttachment = attachmentUri != null,
-                attachmentUploadProgress = if (attachmentUri != null) 0f else null,
             )
 
             try {
@@ -148,11 +142,6 @@ class ConversationViewModel @Inject constructor(
                         attachmentUploadManager.uploadSingleEncryptedAttachment(
                             conversationId = currentConversationId,
                             uri = attachmentUri,
-                            onProgress = { progress ->
-                                _state.value = _state.value.copy(
-                                    attachmentUploadProgress = progress,
-                                )
-                            },
                         )
                     )
                 } else {
@@ -169,7 +158,6 @@ class ConversationViewModel @Inject constructor(
 
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
-                    attachmentUploadProgress = null,
                 )
 
                 outboxDispatcher.drainConversation(currentConversationId)
@@ -184,7 +172,6 @@ class ConversationViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
-                    attachmentUploadProgress = null,
                     error = e.message ?: "Не удалось подготовить сообщение",
                 )
             }
@@ -822,18 +809,6 @@ class ConversationViewModel @Inject constructor(
             )
 
             if (attachment.hasEncryptedBlobKeys) {
-                encryptedAttachmentFileManager.getCachedPreviewBytes(attachment.attachmentId)?.let { cachedBytes ->
-                    _state.value = _state.value.copy(
-                        imagePreviewAttachmentId = attachment.attachmentId,
-                        imagePreviewUrl = null,
-                        imagePreviewBytes = cachedBytes,
-                        imagePreviewFileName = attachment.fileName,
-                        imagePreviewAttachment = attachment,
-                        isLoadingImagePreview = false,
-                    )
-                    return@launch
-                }
-
                 runCatching {
                     val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
                         ?: error("Не удалось получить ссылку на encrypted attachment")
@@ -842,7 +817,6 @@ class ConversationViewModel @Inject constructor(
                         downloadUrl = downloadInfo.downloadUrl,
                         blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
                         blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
-                        attachmentId = attachment.attachmentId,
                     )
                 }.onSuccess { bytes ->
                     _state.value = _state.value.copy(

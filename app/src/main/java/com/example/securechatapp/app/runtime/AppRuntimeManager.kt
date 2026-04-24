@@ -3,6 +3,7 @@ package com.example.securechatapp.app.runtime
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.example.securechatapp.data.background.BackgroundWorkScheduler
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.OutboxDispatcher
@@ -25,6 +26,7 @@ class AppRuntimeManager @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val outboxDispatcher: OutboxDispatcher,
+    private val backgroundWorkScheduler: BackgroundWorkScheduler,
 ) : DefaultLifecycleObserver {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -69,6 +71,12 @@ class AppRuntimeManager @Inject constructor(
             val session = sessionLocalDataSource.getSessionSnapshot()
             val authorized = !session?.accessToken.isNullOrBlank()
 
+            if (authorized) {
+                backgroundWorkScheduler.scheduleAuthenticatedWork()
+            } else {
+                backgroundWorkScheduler.cancelAuthenticatedWork()
+            }
+
             if (authorized && isForeground) {
                 activateRuntime()
             } else {
@@ -81,6 +89,7 @@ class AppRuntimeManager @Inject constructor(
         realtimeWebSocketManager.connectIfNeeded()
         outboxDispatcher.recoverStuckMessages()
         outboxDispatcher.drainAll()
+        backgroundWorkScheduler.enqueueOutboxDrain()
         ensureHeartbeatLoop()
         ensureOutboxLoop()
     }
