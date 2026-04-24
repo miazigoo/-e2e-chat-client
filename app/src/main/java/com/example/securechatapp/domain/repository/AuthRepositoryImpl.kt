@@ -18,6 +18,7 @@ import com.example.securechatapp.domain.repository.AuthRepository
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
+import com.example.securechatapp.crypto.engine.randomBase64
 
 
 class AuthRepositoryImpl @Inject constructor(
