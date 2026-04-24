@@ -4,7 +4,6 @@ import android.os.Build
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.example.securechatapp.crypto.engine.randomBase64
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto

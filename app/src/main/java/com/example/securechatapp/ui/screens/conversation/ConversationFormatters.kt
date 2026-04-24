@@ -1,6 +1,5 @@
 package com.example.securechatapp.ui.screens.conversation
 
-import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
 import com.example.securechatapp.domain.model.ChatMessage
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -27,12 +26,12 @@ fun buildConversationRows(
         val nextMessage = messages.getOrNull(index + 1)
 
         val sameAsPrevious = previousMessage != null &&
-            previousMessage.isMine == message.isMine &&
-            parseLocalDate(previousMessage.createdAt) == currentDate
+                previousMessage.isMine == message.isMine &&
+                parseLocalDate(previousMessage.createdAt) == currentDate
 
         val sameAsNext = nextMessage != null &&
-            nextMessage.isMine == message.isMine &&
-            parseLocalDate(nextMessage.createdAt) == currentDate
+                nextMessage.isMine == message.isMine &&
+                parseLocalDate(nextMessage.createdAt) == currentDate
 
         val position = when {
             sameAsPrevious && sameAsNext -> MessageGroupPosition.MIDDLE
@@ -52,31 +51,11 @@ fun buildConversationRows(
 
 fun buildConversationSubtitle(
     messages: List<ChatMessage>,
-    connectionState: RealtimeConnectionState,
-    isSyncing: Boolean,
 ): String {
-    val transportLabel = when {
-        isSyncing -> "синхронизация…"
-        connectionState == RealtimeConnectionState.CONNECTING -> "подключение…"
-        connectionState == RealtimeConnectionState.RECONNECTING -> "переподключение…"
-        connectionState == RealtimeConnectionState.DISCONNECTED -> "realtime оффлайн"
-        else -> null
-    }
+    if (messages.isEmpty()) return "начните защищённый диалог"
 
-    val activityLabel = when {
-        messages.isEmpty() -> "защищённый чат"
-        else -> buildLastActivityLabel(messages.last())
-    }
-
-    return listOfNotNull(transportLabel, activityLabel)
-        .joinToString(" • ")
-        .ifBlank { "защищённый чат" }
-}
-
-private fun buildLastActivityLabel(
-    lastMessage: ChatMessage,
-): String {
-    val lastDate = parseLocalDate(lastMessage.createdAt)
+    val last = messages.last()
+    val lastDate = parseLocalDate(last.createdAt)
     val today = LocalDate.now()
 
     return when (lastDate) {
@@ -85,7 +64,7 @@ private fun buildLastActivityLabel(
         today.minusDays(1) -> "был(а) вчера"
         else -> {
             val text = runCatching {
-                OffsetDateTime.parse(lastMessage.createdAt)
+                OffsetDateTime.parse(last.createdAt)
                     .format(DateTimeFormatter.ofPattern("d MMM", Locale("ru")))
             }.getOrDefault("")
             if (text.isBlank()) "защищённый чат" else "последняя активность $text"
@@ -105,7 +84,7 @@ fun formatDateSeparator(date: LocalDate): String {
         today -> "Сегодня"
         today.minusDays(1) -> "Вчера"
         else -> date.format(
-            DateTimeFormatter.ofPattern("d MMMM", Locale("ru")),
+            DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
         )
     }
 }

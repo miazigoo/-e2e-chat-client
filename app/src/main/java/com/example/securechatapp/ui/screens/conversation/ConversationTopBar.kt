@@ -1,5 +1,7 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,8 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.data.remote.websocket.RealtimeConnectionState
-import com.example.securechatapp.ui.components.RealtimeStatusBadge
 import com.example.securechatapp.ui.theme.TgTopBarDark
 import com.example.securechatapp.ui.theme.TgTopBarLight
 
@@ -30,9 +31,8 @@ import com.example.securechatapp.ui.theme.TgTopBarLight
 fun ConversationTopBar(
     title: String,
     subtitle: String,
-    connectionState: RealtimeConnectionState,
-    isSyncing: Boolean,
     onBack: () -> Unit,
+    onRefresh: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
 ) {
@@ -46,49 +46,57 @@ fun ConversationTopBar(
         tonalElevation = 2.dp,
         shadowElevation = 6.dp,
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            TextButton(onClick = onBack) {
+                Text("←")
+            }
+
+            Surface(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
             ) {
-                TextButton(onClick = onBack) {
-                    Text("←")
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(start = 14.dp, top = 10.dp),
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = title,
+                        text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
+                        color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier.size(8.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    ) {}
+
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -97,26 +105,25 @@ fun ConversationTopBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-
-                TextButton(onClick = onLogout) {
-                    Text(if (isLoggingOut) "..." else "Выйти")
-                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                modifier = Modifier.clickable(onClick = onRefresh),
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
             ) {
-                RealtimeStatusBadge(connectionState = connectionState)
+                Text(
+                    text = "Обновить",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
 
-                if (isSyncing) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Синхронизация…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Spacer(modifier = Modifier.width(4.dp))
+
+            TextButton(onClick = onLogout) {
+                Text(if (isLoggingOut) "..." else "Выйти")
             }
         }
     }
