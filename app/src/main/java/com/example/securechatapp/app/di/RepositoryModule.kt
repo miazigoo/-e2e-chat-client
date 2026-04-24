@@ -1,9 +1,7 @@
 package com.example.securechatapp.app.di
 
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.example.securechatapp.crypto.signal.LibSignalMessageCryptoEngine
-import com.example.securechatapp.crypto.signal.RealSignalPreKeyMaterialProvider
-import com.example.securechatapp.crypto.signal.SignalMessageCryptoEngine
+import com.example.securechatapp.crypto.signal.FailClosedSignalPreKeyMaterialProvider
 import com.example.securechatapp.crypto.signal.SignalPreKeyMaterialProvider
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
@@ -51,14 +49,6 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideSignalPreKeyMaterialProvider(
-        provider: RealSignalPreKeyMaterialProvider,
+        provider: FailClosedSignalPreKeyMaterialProvider,
     ): SignalPreKeyMaterialProvider = provider
-
-
-    @Provides
-    @Singleton
-    fun provideSignalMessageCryptoEngine(
-        engine: LibSignalMessageCryptoEngine,
-    ): SignalMessageCryptoEngine = engine
-
 }

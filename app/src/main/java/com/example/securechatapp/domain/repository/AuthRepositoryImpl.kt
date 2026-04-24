@@ -4,6 +4,7 @@ import android.os.Build
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.crypto.engine.CryptoEngine
+import com.example.securechatapp.crypto.engine.randomBase64
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
@@ -18,7 +19,6 @@ import com.example.securechatapp.domain.repository.AuthRepository
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
-import com.example.securechatapp.crypto.engine.randomBase64
 
 
 class AuthRepositoryImpl @Inject constructor(

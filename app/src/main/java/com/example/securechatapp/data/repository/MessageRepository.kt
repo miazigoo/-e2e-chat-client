@@ -4,6 +4,9 @@ import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import com.example.securechatapp.crypto.engine.CryptoEngine
+import com.example.securechatapp.crypto.engine.nowIso
+import com.example.securechatapp.crypto.engine.encryptPlainText
+import com.example.securechatapp.crypto.engine.decryptToPlainText
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
@@ -18,9 +21,6 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
-import com.example.securechatapp.crypto.engine.decryptToPlainText
-import com.example.securechatapp.crypto.engine.encryptPlainText
-import com.example.securechatapp.crypto.engine.nowIso
 
 @Singleton
 class MessageRepository @Inject constructor(

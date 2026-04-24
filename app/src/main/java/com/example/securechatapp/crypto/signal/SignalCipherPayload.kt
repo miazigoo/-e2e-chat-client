@@ -1,22 +1,18 @@
 package com.example.securechatapp.crypto.signal
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class SignalCipherPayload(
     val ciphertextBase64: String,
-    val messageType: Int,
-) {
-    init {
-        require(ciphertextBase64.isNotBlank()) { "ciphertextBase64 must not be blank" }
-    }
-}
+    val messageType: SignalMessageType,
+    val senderUserId: Int,
+    val senderDeviceId: Int,
+    val recipientUserId: Int,
+    val recipientDeviceId: Int,
+)
 
-data class SignalRemoteAddress(
-    val userId: Int,
-    val deviceId: Int,
-) {
-    init {
-        require(userId > 0) { "userId must be positive" }
-        require(deviceId > 0) { "deviceId must be positive" }
-    }
-
-    val stableName: String = "user:$userId"
+enum class SignalMessageType {
+    PRE_KEY,
+    WHISPER,
 }

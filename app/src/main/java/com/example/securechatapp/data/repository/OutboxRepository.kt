@@ -3,6 +3,7 @@ package com.example.securechatapp.data.repository
 import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.crypto.engine.CryptoEngine
+import com.example.securechatapp.crypto.engine.nowIso
 import com.example.securechatapp.data.local.db.SecureChatDatabase
 import com.example.securechatapp.data.local.db.decodeAttachmentsJson
 import com.example.securechatapp.data.local.db.encodeAttachmentsJson
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import com.example.securechatapp.crypto.engine.nowIso
 
 data class PendingOutgoingMessage(
     val localMessageId: Int,
