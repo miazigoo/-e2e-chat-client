@@ -11,15 +11,16 @@ import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentItemRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsRequestDto
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
 
 data class UploadedEncryptedAttachment(
     val attachmentId: Int,
@@ -34,96 +35,24 @@ class AttachmentUploadManager @Inject constructor(
 ) {
     private val uploadHttpClient = OkHttpClient.Builder().build()
 
-    /**
-     * Legacy dev/plain upload path.
-     * Kept for compatibility until encrypted attachment transport is fully wired.
-     */
-    suspend fun uploadSingleAttachment(
-        conversationId: Int,
-        uri: Uri,
-    ): Int = withContext(Dispatchers.IO) {
-        val fileBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Не удалось прочитать файл")
-
-        val fileName = queryDisplayName(uri) ?: "file.bin"
-        val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
-        val fileSize = querySize(uri) ?: fileBytes.size.toLong()
-        val sha256 = sha256Hex(fileBytes)
-
-        val session = api.createUploadSession(
-            CreateUploadSessionRequestDto(
-                conversationId = conversationId,
-                filesExpectedCount = 1,
-            )
-        ).data
-
-        val init = api.initAttachments(
-            sessionId = session.sessionId,
-            body = InitAttachmentsRequestDto(
-                items = listOf(
-                    InitAttachmentItemRequestDto(
-                        encryptedFileName = fileName,
-                        fileSize = fileSize,
-                        mimeHint = mimeType,
-                        sha256EncryptedBlob = sha256,
-                        encryptedMetadata = mapOf(
-                            "dev_attachment" to "true",
-                            "original_name" to fileName,
-                        ),
-                    )
-                )
-            )
-        ).data
-
-        val item = init.items.firstOrNull() ?: error("Сервер не вернул attachment item")
-        val uploadUrl = item.uploadUrl ?: error("Сервер не вернул upload_url")
-
-        val requestBuilder = Request.Builder()
-            .url(uploadUrl)
-            .put(fileBytes.toRequestBody(mimeType.toMediaTypeOrNull()))
-
-        item.uploadHeaders.forEach { (key, value) ->
-            requestBuilder.header(key, value)
-        }
-
-        val response = uploadHttpClient.newCall(requestBuilder.build()).execute()
-        if (!response.isSuccessful) {
-            response.close()
-            error("Не удалось загрузить файл в storage: HTTP ${response.code}")
-        }
-        response.close()
-
-        api.completeUploadSession(
-            sessionId = session.sessionId,
-            body = CompleteUploadSessionRequestDto(
-                attachmentIds = listOf(item.attachmentId)
-            )
-        )
-
-        item.attachmentId
-    }
-
-    /**
-     * Encrypted blob upload path.
-     * This prepares production-style attachment transport but should be wired
-     * into message send/decrypt flow in the next step.
-     */
     suspend fun uploadSingleEncryptedAttachment(
         conversationId: Int,
         uri: Uri,
+        onProgress: (Float) -> Unit = {},
     ): UploadedEncryptedAttachment = withContext(Dispatchers.IO) {
+        onProgress(0f)
+
         val plainBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Не удалось прочитать файл")
 
         val fileName = queryDisplayName(uri) ?: "file.bin"
         val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
-        val fileSize = querySize(uri) ?: plainBytes.size.toLong()
+        val plainFileSize = querySize(uri) ?: plainBytes.size.toLong()
 
         val encryptedBlob = attachmentCryptoEngine.encryptBlob(plainBytes)
         val encryptedFileName = attachmentCryptoEngine.encryptText(fileName)
-
         val encryptedFileNameBase64 = attachmentCryptoEngine.toBase64(
-            encryptedFileName.ciphertext
+            encryptedFileName.ciphertext,
         )
 
         val session = api.createUploadSession(
@@ -139,11 +68,12 @@ class AttachmentUploadManager @Inject constructor(
                 items = listOf(
                     InitAttachmentItemRequestDto(
                         encryptedFileName = encryptedFileNameBase64,
-                        fileSize = fileSize,
+                        fileSize = encryptedBlob.ciphertext.size.toLong(),
                         mimeHint = mimeType,
                         sha256EncryptedBlob = encryptedBlob.sha256EncryptedBlob,
                         encryptedMetadata = mapOf(
                             "transport" to "encrypted_blob_v1",
+                            "plain_file_size" to plainFileSize.toString(),
                         ),
                     )
                 )
@@ -155,25 +85,32 @@ class AttachmentUploadManager @Inject constructor(
 
         val requestBuilder = Request.Builder()
             .url(uploadUrl)
-            .put(encryptedBlob.ciphertext.toRequestBody(mimeType.toMediaTypeOrNull()))
+            .put(
+                ChunkedProgressRequestBody(
+                    bytes = encryptedBlob.ciphertext,
+                    contentType = mimeType.toMediaTypeOrNull(),
+                    onProgress = onProgress,
+                )
+            )
 
         item.uploadHeaders.forEach { (key, value) ->
             requestBuilder.header(key, value)
         }
 
-        val response = uploadHttpClient.newCall(requestBuilder.build()).execute()
-        if (!response.isSuccessful) {
-            response.close()
-            error("Не удалось загрузить encrypted blob в storage: HTTP ${response.code}")
+        uploadHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Не удалось загрузить encrypted blob в storage: HTTP ${response.code}")
+            }
         }
-        response.close()
 
         api.completeUploadSession(
             sessionId = session.sessionId,
             body = CompleteUploadSessionRequestDto(
-                attachmentIds = listOf(item.attachmentId)
+                attachmentIds = listOf(item.attachmentId),
             )
         )
+
+        onProgress(1f)
 
         UploadedEncryptedAttachment(
             attachmentId = item.attachmentId,
@@ -183,7 +120,7 @@ class AttachmentUploadManager @Inject constructor(
                 fileNameKeyBase64 = encryptedFileName.keyBase64,
                 fileNameNonceBase64 = encryptedFileName.nonceBase64,
                 mimeType = mimeType,
-                fileSize = fileSize,
+                fileSize = plainFileSize,
                 sha256EncryptedBlob = encryptedBlob.sha256EncryptedBlob,
                 blobKeyBase64 = encryptedBlob.keyBase64,
                 blobNonceBase64 = encryptedBlob.nonceBase64,
@@ -217,8 +154,28 @@ class AttachmentUploadManager @Inject constructor(
         }
     }
 
-    private fun sha256Hex(bytes: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-        return digest.joinToString(separator = "") { b -> "%02x".format(b) }
+    private class ChunkedProgressRequestBody(
+        private val bytes: ByteArray,
+        private val contentType: MediaType?,
+        private val onProgress: (Float) -> Unit,
+    ) : RequestBody() {
+
+        override fun contentType(): MediaType? = contentType
+
+        override fun contentLength(): Long = bytes.size.toLong()
+
+        override fun writeTo(sink: BufferedSink) {
+            var offset = 0
+            while (offset < bytes.size) {
+                val count = minOf(CHUNK_SIZE_BYTES, bytes.size - offset)
+                sink.write(bytes, offset, count)
+                offset += count
+                onProgress(offset.toFloat() / bytes.size.toFloat())
+            }
+        }
+
+        private companion object {
+            const val CHUNK_SIZE_BYTES = 64 * 1024
+        }
     }
 }
