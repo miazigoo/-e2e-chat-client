@@ -1,10 +1,11 @@
 package com.example.securechatapp.data.repository
 
 import android.os.Build
+import java.security.SecureRandom
+import java.util.Base64
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.example.securechatapp.crypto.engine.randomBase64
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
@@ -203,20 +204,27 @@ class AuthRepositoryImpl @Inject constructor(
                 deviceName = deviceName.ifBlank { "Android device" },
                 platform = "android",
                 appVersion = "1.0.0",
-                publicIdentityKey = crypto.randomBase64(48),
-                publicSigningKey = crypto.randomBase64(48),
-                signedPrekey = crypto.randomBase64(48),
-                signedPrekeySignature = crypto.randomBase64(64),
+                publicIdentityKey = randomBase64(48),
+                publicSigningKey = randomBase64(48),
+                signedPrekey = randomBase64(48),
+                signedPrekeySignature = randomBase64(64),
                 oneTimePrekeys = (1..20).map { index ->
                     OneTimePreKeyDto(
                         prekeyId = index,
-                        publicPrekey = crypto.randomBase64(48),
+                        publicPrekey = randomBase64(48),
                     )
                 },
             )
         )
 
         sessionLocalDataSource.saveDeviceUuid(deviceUuid)
+    }
+
+
+    private fun randomBase64(sizeBytes: Int): String {
+        val bytes = ByteArray(sizeBytes)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getEncoder().encodeToString(bytes)
     }
 
     private fun parseHttpError(e: HttpException): AppResult.Error {

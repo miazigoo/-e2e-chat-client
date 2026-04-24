@@ -156,6 +156,12 @@ fun ConversationScreen(
                                 onRemovePending = {
                                     viewModel.removePendingMessage(row.message.messageId)
                                 },
+                                onSetReaction = { reaction ->
+                                    viewModel.setMessageReaction(row.message.messageId, reaction)
+                                },
+                                onRemoveReaction = {
+                                    viewModel.removeMessageReaction(row.message.messageId)
+                                },
                             )
                         }
                     }

@@ -43,6 +43,13 @@ enum class MessageSendStatus {
 }
 
 @Serializable
+data class MessageReactionSummary(
+    val reaction: String,
+    val count: Int,
+    val me: Boolean = false,
+)
+
+@Serializable
 data class ChatMessage(
     val messageId: Int,
     val messageUuid: String? = null,
@@ -56,6 +63,7 @@ data class ChatMessage(
     val attachments: List<AttachmentItem> = emptyList(),
     val sendStatus: MessageSendStatus = MessageSendStatus.SENT,
     val errorMessage: String? = null,
+    val reactions: List<MessageReactionSummary> = emptyList(),
 )
 
 @Serializable

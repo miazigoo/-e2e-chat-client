@@ -12,6 +12,9 @@ import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
+import com.example.securechatapp.data.remote.dto.SetMessageReactionResponseDto
+import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
+import com.example.securechatapp.data.remote.dto.DeleteMessageReactionResponseDto
 import com.example.securechatapp.data.remote.dto.DeviceHeartbeatResponseDto
 import com.example.securechatapp.data.remote.dto.GetConversationResponseDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsRequestDto
@@ -136,6 +139,17 @@ suspend fun updateConversationSettings(
     suspend fun deleteGlobalMessages(
         @Body body: DeleteMessagesRequestDto,
     ): ApiEnvelopeDto<DeleteMessagesResponseDto>
+
+    @POST("messages/{messageId}/reaction")
+    suspend fun setMessageReaction(
+        @Path("messageId") messageId: Int,
+        @Body body: SetMessageReactionRequestDto,
+    ): ApiEnvelopeDto<SetMessageReactionResponseDto>
+
+    @DELETE("messages/{messageId}/reaction")
+    suspend fun deleteMessageReaction(
+        @Path("messageId") messageId: Int,
+    ): ApiEnvelopeDto<DeleteMessageReactionResponseDto>
 
     @POST("files/upload-sessions")
     suspend fun createUploadSession(

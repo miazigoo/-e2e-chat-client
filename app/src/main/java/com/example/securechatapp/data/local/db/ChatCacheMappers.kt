@@ -6,6 +6,7 @@ import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
+import com.example.securechatapp.domain.model.MessageReactionSummary
 import com.example.securechatapp.domain.model.MessageSendStatus
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -96,6 +97,10 @@ fun MessageCacheEntity.toDomain(
         ),
         sendStatus = MessageSendStatus.SENT,
         errorMessage = null,
+        reactions = decodeReactionsJson(
+            json = json,
+            raw = reactionsJson,
+        ),
     )
 }
 
@@ -118,6 +123,10 @@ fun ChatMessage.toEntity(
             json = json,
             attachments = attachments,
         ),
+        reactionsJson = encodeReactionsJson(
+            json = json,
+            reactions = reactions,
+        ),
     )
 }
 
@@ -138,6 +147,29 @@ fun decodeAttachmentsJson(
     return runCatching {
         json.decodeFromString(
             ListSerializer(AttachmentItem.serializer()),
+            raw,
+        )
+    }.getOrDefault(emptyList())
+}
+
+
+fun encodeReactionsJson(
+    json: Json,
+    reactions: List<MessageReactionSummary>,
+): String {
+    return json.encodeToString(
+        ListSerializer(MessageReactionSummary.serializer()),
+        reactions,
+    )
+}
+
+fun decodeReactionsJson(
+    json: Json,
+    raw: String,
+): List<MessageReactionSummary> {
+    return runCatching {
+        json.decodeFromString(
+            ListSerializer(MessageReactionSummary.serializer()),
             raw,
         )
     }.getOrDefault(emptyList())

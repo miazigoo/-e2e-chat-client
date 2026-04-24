@@ -342,6 +342,13 @@ data class SendMessageResponseDto(
 
 
 @Serializable
+data class MessageReactionSummaryDto(
+    val reaction: String,
+    val count: Int,
+    val me: Boolean = false,
+)
+
+@Serializable
 data class MessageItemDto(
     @SerialName("message_id")
     val messageId: Int,
@@ -371,6 +378,7 @@ data class MessageItemDto(
     val readAt: String? = null,
     @SerialName("has_attachments")
     val hasAttachments: Boolean = false,
+    val reactions: List<MessageReactionSummaryDto> = emptyList(),
 )
 
 @Serializable
@@ -609,6 +617,26 @@ data class AttachmentMetadataItemDto(
     val expiresAt: String? = null,
     @SerialName("deleted_at")
     val deletedAt: String? = null,
+)
+
+@Serializable
+data class SetMessageReactionRequestDto(
+    val reaction: String,
+)
+
+@Serializable
+data class SetMessageReactionResponseDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    val reaction: String,
+    val updated: Boolean,
+)
+
+@Serializable
+data class DeleteMessageReactionResponseDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    val removed: Boolean,
 )
 
 @Serializable

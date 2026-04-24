@@ -25,4 +25,5 @@ data class MessageCacheEntity(
     val hasAttachments: Boolean = false,
     val attachmentIdsCsv: String = "",
     val attachmentsJson: String = "[]",
+    val reactionsJson: String = "[]",
 )

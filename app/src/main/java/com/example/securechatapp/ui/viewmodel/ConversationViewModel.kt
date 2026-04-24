@@ -259,6 +259,43 @@ fun disableSharedSecret() {
         }
     }
 
+
+
+    fun setMessageReaction(messageId: Int, reaction: String) {
+        if (messageId <= 0) return
+
+        viewModelScope.launch {
+            runCatching {
+                messageRepository.setMessageReaction(
+                    messageId = messageId,
+                    reaction = reaction,
+                )
+                reloadMessages(
+                    markDelivered = false,
+                    markRead = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(error = it.message ?: "Не удалось поставить реакцию")
+            }
+        }
+    }
+
+    fun removeMessageReaction(messageId: Int) {
+        if (messageId <= 0) return
+
+        viewModelScope.launch {
+            runCatching {
+                messageRepository.deleteMessageReaction(messageId = messageId)
+                reloadMessages(
+                    markDelivered = false,
+                    markRead = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(error = it.message ?: "Не удалось убрать реакцию")
+            }
+        }
+    }
+
     fun deleteMessageLocal(messageId: Int) {
         val currentConversationId = _state.value.conversationId ?: return
 

@@ -47,6 +47,8 @@ fun MessageBubble(
     onAttachmentsClick: () -> Unit,
     onRetrySend: () -> Unit = {},
     onRemovePending: () -> Unit = {},
+    onSetReaction: (String) -> Unit = {},
+    onRemoveReaction: () -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
     val bubbleColor = when {
@@ -127,6 +129,39 @@ fun MessageBubble(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
 
+                    if (msg.reactions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            msg.reactions.take(5).forEach { reaction ->
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (reaction.me) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                                    onClick = {
+                                        if (reaction.me) {
+                                            onRemoveReaction()
+                                        } else {
+                                            onSetReaction(reaction.reaction)
+                                        }
+                                    },
+                                ) {
+                                    Text(
+                                        text = "${reaction.reaction} ${reaction.count}",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (
                         msg.sendStatus == MessageSendStatus.FAILED &&
                         !msg.errorMessage.isNullOrBlank()
@@ -191,6 +226,26 @@ fun MessageBubble(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
             ) {
+                listOf("👍", "❤️", "😂", "🔥", "😮", "😢").forEach { reaction ->
+                    DropdownMenuItem(
+                        text = { Text("$reaction Реакция") },
+                        onClick = {
+                            menuExpanded = false
+                            onSetReaction(reaction)
+                        },
+                    )
+                }
+
+                if (msg.reactions.any { it.me }) {
+                    DropdownMenuItem(
+                        text = { Text("Убрать реакцию") },
+                        onClick = {
+                            menuExpanded = false
+                            onRemoveReaction()
+                        },
+                    )
+                }
+
                 if (msg.messageId < 0) {
                     if (msg.sendStatus == MessageSendStatus.FAILED) {
                         DropdownMenuItem(

@@ -16,8 +16,10 @@ import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
+import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessageReactionSummary
 import com.example.securechatapp.domain.model.MessageSendStatus
 import java.util.UUID
 import javax.inject.Inject
@@ -60,6 +62,13 @@ class MessageRepository @Inject constructor(
                     attachments = decoded.attachments,
                     sendStatus = MessageSendStatus.SENT,
                     errorMessage = null,
+                    reactions = dto.reactions.map { reaction ->
+                        MessageReactionSummary(
+                            reaction = reaction.reaction,
+                            count = reaction.count,
+                            me = reaction.me,
+                        )
+                    },
                 )
             }
     }
@@ -181,6 +190,28 @@ class MessageRepository @Inject constructor(
                     attachmentIds = distinctAttachmentIds,
                 )
             ).data
+        }
+    }
+
+
+
+    suspend fun setMessageReaction(
+        messageId: Int,
+        reaction: String,
+    ) {
+        safe {
+            api.setMessageReaction(
+                messageId = messageId,
+                body = SetMessageReactionRequestDto(reaction = reaction),
+            )
+        }
+    }
+
+    suspend fun deleteMessageReaction(
+        messageId: Int,
+    ) {
+        safe {
+            api.deleteMessageReaction(messageId = messageId)
         }
     }
 
