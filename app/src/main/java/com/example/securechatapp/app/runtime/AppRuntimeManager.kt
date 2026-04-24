@@ -5,6 +5,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
+import com.example.securechatapp.data.repository.BackgroundSyncCoordinator
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.SessionRepository
 import javax.inject.Inject
@@ -25,6 +26,7 @@ class AppRuntimeManager @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val outboxDispatcher: OutboxDispatcher,
+    private val backgroundSyncCoordinator: BackgroundSyncCoordinator,
 ) : DefaultLifecycleObserver {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -35,6 +37,7 @@ class AppRuntimeManager @Inject constructor(
 
     private var heartbeatJob: Job? = null
     private var outboxJob: Job? = null
+    private var syncJob: Job? = null
     private var sessionObserverJob: Job? = null
 
     fun start() {
@@ -83,6 +86,7 @@ class AppRuntimeManager @Inject constructor(
         outboxDispatcher.drainAll()
         ensureHeartbeatLoop()
         ensureOutboxLoop()
+        ensureSyncLoop()
     }
 
     private fun deactivateRuntime() {
@@ -91,6 +95,9 @@ class AppRuntimeManager @Inject constructor(
 
         outboxJob?.cancel()
         outboxJob = null
+
+        syncJob?.cancel()
+        syncJob = null
 
         realtimeWebSocketManager.disconnect()
     }
@@ -129,9 +136,29 @@ class AppRuntimeManager @Inject constructor(
         }
     }
 
+
+
+    private fun ensureSyncLoop() {
+        if (syncJob != null) return
+
+        syncJob = scope.launch {
+            runCatching {
+                backgroundSyncCoordinator.syncOnce()
+            }
+
+            while (true) {
+                delay(BACKGROUND_SYNC_INTERVAL_MILLIS)
+                runCatching {
+                    backgroundSyncCoordinator.syncOnce()
+                }
+            }
+        }
+    }
+
     private companion object {
         const val MIN_OUTBOX_LOOP_DELAY_MILLIS = 2_000L
         const val DEFAULT_OUTBOX_LOOP_DELAY_MILLIS = 8_000L
         const val MAX_OUTBOX_LOOP_DELAY_MILLIS = 60_000L
+        const val BACKGROUND_SYNC_INTERVAL_MILLIS = 15 * 60 * 1_000L
     }
 }

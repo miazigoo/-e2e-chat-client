@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ fun ConversationComposer(
     onRemoveAttachment: () -> Unit,
     onSendClick: () -> Unit,
     isUploading: Boolean,
+    uploadProgressPercent: Int?,
     sendEnabled: Boolean,
 ) {
     Surface(
@@ -54,6 +56,13 @@ fun ConversationComposer(
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (isUploading && uploadProgressPercent != null) {
+                LinearProgressIndicator(
+                    progress = { (uploadProgressPercent.coerceIn(0, 100) / 100f) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             attachmentName?.let { name ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -67,7 +76,7 @@ fun ConversationComposer(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "📎 $name",
+                            text = buildAttachmentLabel(name, isUploading, uploadProgressPercent),
                             modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -144,5 +153,19 @@ fun ConversationComposer(
                 }
             }
         }
+    }
+}
+
+
+private fun buildAttachmentLabel(
+    name: String,
+    isUploading: Boolean,
+    uploadProgressPercent: Int?,
+): String {
+    val progress = uploadProgressPercent?.coerceIn(0, 100)
+    return if (isUploading && progress != null) {
+        "📎 $name • $progress%"
+    } else {
+        "📎 $name"
     }
 }

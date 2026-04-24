@@ -49,6 +49,7 @@ data class ConversationUiState(
     val isLoggingOut: Boolean = false,
     val isSyncing: Boolean = false,
     val isUploadingAttachment: Boolean = false,
+    val attachmentUploadProgressPercent: Int? = null,
     val deletingMessageIds: Set<Int> = emptySet(),
     val error: String? = null,
     val info: String? = null,
@@ -134,6 +135,7 @@ class ConversationViewModel @Inject constructor(
                 error = null,
                 info = null,
                 isUploadingAttachment = attachmentUri != null,
+                attachmentUploadProgressPercent = if (attachmentUri != null) 0 else null,
             )
 
             try {
@@ -142,7 +144,11 @@ class ConversationViewModel @Inject constructor(
                         attachmentUploadManager.uploadSingleEncryptedAttachment(
                             conversationId = currentConversationId,
                             uri = attachmentUri,
-                        )
+                        ) { progress ->
+                            _state.value = _state.value.copy(
+                                attachmentUploadProgressPercent = progress,
+                            )
+                        }
                     )
                 } else {
                     emptyList()
@@ -158,6 +164,7 @@ class ConversationViewModel @Inject constructor(
 
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
+                    attachmentUploadProgressPercent = null,
                 )
 
                 outboxDispatcher.drainConversation(currentConversationId)
@@ -172,6 +179,7 @@ class ConversationViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
+                    attachmentUploadProgressPercent = null,
                     error = e.message ?: "Не удалось подготовить сообщение",
                 )
             }

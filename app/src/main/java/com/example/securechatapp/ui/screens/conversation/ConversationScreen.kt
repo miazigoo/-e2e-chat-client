@@ -232,6 +232,7 @@ fun ConversationScreen(
                     }
                 },
                 isUploading = state.isUploadingAttachment,
+                uploadProgressPercent = state.attachmentUploadProgressPercent,
                 sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
             )
         }
