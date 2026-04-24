@@ -117,10 +117,14 @@ data class BootstrapDeviceRequestDto(
     val appVersion: String,
     @SerialName("fcm_token")
     val fcmToken: String? = null,
+    @SerialName("registration_id")
+    val registrationId: Int,
     @SerialName("public_identity_key")
     val publicIdentityKey: String,
     @SerialName("public_signing_key")
     val publicSigningKey: String,
+    @SerialName("signed_prekey_id")
+    val signedPrekeyId: Int,
     @SerialName("signed_prekey")
     val signedPrekey: String,
     @SerialName("signed_prekey_signature")

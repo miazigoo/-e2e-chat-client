@@ -113,4 +113,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("org.whispersystems:signal-protocol-android:2.8.1")
 }

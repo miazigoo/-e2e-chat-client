@@ -1,7 +1,11 @@
 package com.example.securechatapp.app.di
 
 import com.example.securechatapp.crypto.engine.CryptoEngine
-import com.example.securechatapp.crypto.signal.FailClosedSignalPreKeyMaterialProvider
+import com.example.securechatapp.crypto.signal.LibSignalMessageCryptoEngine
+import com.example.securechatapp.crypto.signal.RealSignalBootstrapKeyMaterialProvider
+import com.example.securechatapp.crypto.signal.RealSignalPreKeyMaterialProvider
+import com.example.securechatapp.crypto.signal.SignalBootstrapKeyMaterialProvider
+import com.example.securechatapp.crypto.signal.SignalMessageCryptoEngine
 import com.example.securechatapp.crypto.signal.SignalPreKeyMaterialProvider
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
@@ -27,11 +31,13 @@ object RepositoryModule {
         authApi: AuthApi,
         sessionLocalDataSource: SecureSessionLocalDataSource,
         crypto: CryptoEngine,
+        signalBootstrapKeyMaterialProvider: SignalBootstrapKeyMaterialProvider,
         json: Json,
     ): AuthRepository = AuthRepositoryImpl(
         authApi = authApi,
         sessionLocalDataSource = sessionLocalDataSource,
         crypto = crypto,
+        signalBootstrapKeyMaterialProvider = signalBootstrapKeyMaterialProvider,
         json = json,
     )
 
@@ -49,6 +55,18 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideSignalPreKeyMaterialProvider(
-        provider: FailClosedSignalPreKeyMaterialProvider,
+        provider: RealSignalPreKeyMaterialProvider,
     ): SignalPreKeyMaterialProvider = provider
+
+    @Provides
+    @Singleton
+    fun provideSignalBootstrapKeyMaterialProvider(
+        provider: RealSignalBootstrapKeyMaterialProvider,
+    ): SignalBootstrapKeyMaterialProvider = provider
+
+    @Provides
+    @Singleton
+    fun provideSignalMessageCryptoEngine(
+        engine: LibSignalMessageCryptoEngine,
+    ): SignalMessageCryptoEngine = engine
 }

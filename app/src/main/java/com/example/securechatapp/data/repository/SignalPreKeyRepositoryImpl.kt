@@ -82,6 +82,7 @@ class SignalPreKeyRepositoryImpl @Inject constructor(
         return callApi {
             val response = keysApi.rotateSignedPreKey(
                 RotateSignedPreKeyRequestDto(
+                    signedPreKeyId = signedPreKey.signedPreKeyId,
                     signedPreKey = signedPreKey.signedPreKey,
                     signedPreKeySignature = signedPreKey.signature,
                 )
@@ -117,8 +118,10 @@ class SignalPreKeyRepositoryImpl @Inject constructor(
             userId = userId,
             deviceId = deviceId,
             requestedByDeviceId = requestedByDeviceId,
+            registrationId = registrationId,
             publicIdentityKey = publicIdentityKey,
             publicSigningKey = publicSigningKey,
+            signedPreKeyId = signedPreKeyId,
             signedPreKey = signedPreKey,
             signedPreKeySignature = signedPreKeySignature,
             oneTimePreKey = oneTimePreKey?.let {

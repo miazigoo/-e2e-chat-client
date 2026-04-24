@@ -27,6 +27,8 @@ data class RefillPreKeysResponseDto(
 
 @Serializable
 data class RotateSignedPreKeyRequestDto(
+    @SerialName("signed_prekey_id")
+    val signedPreKeyId: Int,
     @SerialName("signed_prekey")
     val signedPreKey: String,
     @SerialName("signed_prekey_signature")
@@ -48,10 +50,14 @@ data class KeyBundleResponseDto(
     val deviceId: Int,
     @SerialName("requested_by_device_id")
     val requestedByDeviceId: Int,
+    @SerialName("registration_id")
+    val registrationId: Int = 0,
     @SerialName("public_identity_key")
     val publicIdentityKey: String,
     @SerialName("public_signing_key")
     val publicSigningKey: String,
+    @SerialName("signed_prekey_id")
+    val signedPreKeyId: Int = 1,
     @SerialName("signed_prekey")
     val signedPreKey: String,
     @SerialName("signed_prekey_signature")

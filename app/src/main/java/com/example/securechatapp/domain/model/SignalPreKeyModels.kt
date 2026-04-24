@@ -11,10 +11,12 @@ data class SignalPublicPreKey(
 }
 
 data class SignalSignedPreKey(
+    val signedPreKeyId: Int,
     val signedPreKey: String,
     val signature: String,
 ) {
     init {
+        require(signedPreKeyId > 0) { "signedPreKeyId must be positive" }
         require(signedPreKey.isNotBlank()) { "signedPreKey must not be blank" }
         require(signature.isNotBlank()) { "signature must not be blank" }
     }
@@ -24,8 +26,10 @@ data class SignalKeyBundle(
     val userId: Int,
     val deviceId: Int,
     val requestedByDeviceId: Int,
+    val registrationId: Int,
     val publicIdentityKey: String,
     val publicSigningKey: String,
+    val signedPreKeyId: Int,
     val signedPreKey: String,
     val signedPreKeySignature: String,
     val oneTimePreKey: SignalPublicPreKey?,
