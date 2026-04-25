@@ -647,7 +647,7 @@ private fun refreshSharedSecretState(
                             } else {
                                 _state.value.downloadingAttachmentId
                             },
-                            error = "Не удалось скачать файл",
+                            error = event.errorMessage ?: "Не удалось скачать файл",
                         )
                     }
 
@@ -931,7 +931,7 @@ private fun refreshSharedSecretState(
             if (attachment.hasEncryptedBlobKeys) {
                 runCatching {
                     val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
-                        ?: error("Не удалось получить ссылку на encrypted attachment")
+                        ?: error("Вложение больше недоступно на сервере")
 
                     encryptedAttachmentFileManager.downloadAndDecryptBytes(
                         downloadUrl = downloadInfo.downloadUrl,
@@ -970,7 +970,7 @@ private fun refreshSharedSecretState(
                             imagePreviewFileName = null,
                             imagePreviewAttachment = null,
                             isLoadingImagePreview = false,
-                            error = "Не удалось получить превью изображения",
+                            error = "Изображение больше недоступно на сервере",
                         )
                         return@onSuccess
                     }
@@ -1013,7 +1013,7 @@ private fun refreshSharedSecretState(
 
             runCatching {
                 val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
-                    ?: error("Не удалось получить данные для скачивания")
+                    ?: error("Вложение больше недоступно на сервере")
 
                 encryptedAttachmentFileManager.saveDecryptedAttachmentToDownloads(
                     attachmentId = attachment.attachmentId,
@@ -1030,7 +1030,7 @@ private fun refreshSharedSecretState(
                         attachmentLocalStates = _state.value.attachmentLocalStates + (
                                 attachment.attachmentId to AttachmentLocalState.FAILED
                                 ),
-                        error = "Не удалось сохранить расшифрованный файл",
+                        error = "Не удалось сохранить расшифрованный файл на устройстве",
                     )
                     return@onSuccess
                 }
@@ -1074,7 +1074,7 @@ private fun refreshSharedSecretState(
                         attachmentLocalStates = _state.value.attachmentLocalStates + (
                                 attachmentId to AttachmentLocalState.FAILED
                                 ),
-                        error = "Не удалось получить данные для скачивания",
+                        error = "Вложение больше недоступно на сервере",
                     )
                     return@onSuccess
                 }

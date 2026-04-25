@@ -30,6 +30,7 @@ enum class AttachmentLocalState {
 data class AttachmentDownloadEvent(
     val attachmentId: Int,
     val state: AttachmentLocalState,
+    val errorMessage: String? = null,
 )
 
 @Singleton
@@ -60,12 +61,18 @@ class AttachmentDownloadManager @Inject constructor(
 
             val attachmentId = getAttachmentIdByDownloadId(downloadId) ?: return
             val state = getAttachmentState(attachmentId)
+            val errorMessage = if (state == AttachmentLocalState.FAILED) {
+                getDownloadFailureMessage(downloadId)
+            } else {
+                null
+            }
 
             scope.launch {
                 _events.emit(
                     AttachmentDownloadEvent(
                         attachmentId = attachmentId,
                         state = state,
+                        errorMessage = errorMessage,
                     )
                 )
             }
@@ -110,13 +117,14 @@ class AttachmentDownloadManager @Inject constructor(
         )
 
         scope.launch {
-            _events.emit(
-                AttachmentDownloadEvent(
-                    attachmentId = attachmentId,
-                    state = AttachmentLocalState.DOWNLOADING,
+                _events.emit(
+                    AttachmentDownloadEvent(
+                        attachmentId = attachmentId,
+                        state = AttachmentLocalState.DOWNLOADING,
+                        errorMessage = null,
+                    )
                 )
-            )
-        }
+            }
 
         return downloadId
     }
@@ -183,6 +191,32 @@ class AttachmentDownloadManager @Inject constructor(
             return cursor.getInt(
                 cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
             )
+        }
+    }
+
+    private fun getDownloadFailureMessage(downloadId: Long): String {
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        downloadManager.query(query).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return "Скачивание не найдено в системе"
+            }
+
+            val reason = cursor.getInt(
+                cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)
+            )
+
+            return when (reason) {
+                DownloadManager.ERROR_CANNOT_RESUME -> "Скачивание не удалось продолжить"
+                DownloadManager.ERROR_DEVICE_NOT_FOUND -> "Хранилище устройства недоступно"
+                DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "Файл уже существует"
+                DownloadManager.ERROR_FILE_ERROR -> "Ошибка записи файла"
+                DownloadManager.ERROR_HTTP_DATA_ERROR -> "Ошибка передачи данных при скачивании"
+                DownloadManager.ERROR_INSUFFICIENT_SPACE -> "Недостаточно места на устройстве"
+                DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "Слишком много перенаправлений при скачивании"
+                DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "Сервер отклонил скачивание"
+                DownloadManager.ERROR_UNKNOWN -> "Неизвестная ошибка скачивания"
+                else -> "Скачивание завершилось с ошибкой"
+            }
         }
     }
 
