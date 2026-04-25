@@ -1,6 +1,7 @@
 package com.example.securechatapp.push
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -143,7 +144,7 @@ class PushNotificationManager @Inject constructor(
             )
             .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        notifySafely(notificationId, notification)
     }
 
     private suspend fun showAppUpdateNotification(payload: PushPayload.AppUpdateAvailable) {
@@ -180,12 +181,10 @@ class PushNotificationManager @Inject constructor(
             .setContentIntent(pendingIntent)
             .build()
 
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_APP_UPDATES, notification)
+        notifySafely(NOTIFICATION_ID_APP_UPDATES, notification)
     }
 
     private fun ensureChannels() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val manager = context.getSystemService(NotificationManager::class.java)
         val messageChannel = NotificationChannel(
             CHANNEL_MESSAGES,
@@ -212,6 +211,17 @@ class PushNotificationManager @Inject constructor(
             context,
             Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun notifySafely(notificationId: Int, notification: android.app.Notification) {
+        if (!canPostNotifications()) return
+
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            return
+        }
     }
 
     private fun buildConversationNotificationId(conversationId: Int): Int = 20_000 + conversationId

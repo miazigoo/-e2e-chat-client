@@ -127,6 +127,133 @@ class AuthRepositoryImplTest {
     }
 
     @Test
+    fun `verifyEmailCode bootstraps device and retries until tokens are received`() = runTest {
+        val deviceUuid = "device-uuid"
+        coEvery {
+            signalBootstrapKeyMaterialProvider.getOrCreateBootstrapMaterial(100)
+        } returns bootstrapMaterial()
+        coEvery { authApi.verifyEmailCode(any()) } returnsMany listOf(
+            envelope(
+                VerifyEmailCodeResponseDto(
+                    requiresBootstrap = true,
+                    bootstrapToken = "bootstrap-token",
+                    bootstrapExpiresIn = 300,
+                )
+            ),
+            envelope(
+                VerifyEmailCodeResponseDto(
+                    requiresBootstrap = false,
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    expiresIn = 3600,
+                )
+            ),
+        )
+        coEvery { authApi.bootstrap(any(), any()) } returns envelope(
+            BootstrapDeviceResponseDto(
+                deviceId = 1,
+                deviceUuid = deviceUuid,
+                isActive = true,
+                prekeysCount = 100,
+            )
+        )
+
+        val result = repository.verifyEmailCode(
+            loginChallengeId = "challenge-1",
+            code = "123456",
+            deviceUuid = deviceUuid,
+        )
+
+        require(result is AppResult.Success)
+        assertEquals("access-token", result.data.accessToken)
+        coVerify(exactly = 2) { authApi.verifyEmailCode(any()) }
+        coVerify(exactly = 1) { authApi.bootstrap("Bearer bootstrap-token", any()) }
+        coVerify(exactly = 1) { sessionLocalDataSource.saveDeviceUuid(deviceUuid) }
+        coVerify(exactly = 1) {
+            sessionLocalDataSource.saveFullSession(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                deviceUuid = deviceUuid,
+            )
+        }
+    }
+
+    @Test
+    fun `login fails when bootstrap is requested without token`() = runTest {
+        coEvery { authApi.login(any()) } returns envelope(
+            LoginResponseDto(
+                requiresEmailCode = false,
+                requiresBootstrap = true,
+                bootstrapToken = null,
+                bootstrapExpiresIn = 300,
+            )
+        )
+
+        val result = repository.login(
+            nickname = "@alice",
+            password = "password123",
+            deviceUuid = "device-uuid",
+        )
+
+        require(result is AppResult.Error)
+        assertEquals("BOOTSTRAP_TOKEN_MISSING", result.code)
+        coVerify(exactly = 0) { authApi.bootstrap(any(), any()) }
+    }
+
+    @Test
+    fun `login stops after bootstrap retry limit`() = runTest {
+        val deviceUuid = "device-uuid"
+        coEvery {
+            signalBootstrapKeyMaterialProvider.getOrCreateBootstrapMaterial(100)
+        } returns bootstrapMaterial()
+        coEvery { authApi.login(any()) } returnsMany listOf(
+            envelope(
+                LoginResponseDto(
+                    requiresEmailCode = false,
+                    requiresBootstrap = true,
+                    bootstrapToken = "bootstrap-token-1",
+                    bootstrapExpiresIn = 300,
+                )
+            ),
+            envelope(
+                LoginResponseDto(
+                    requiresEmailCode = false,
+                    requiresBootstrap = true,
+                    bootstrapToken = "bootstrap-token-2",
+                    bootstrapExpiresIn = 300,
+                )
+            ),
+            envelope(
+                LoginResponseDto(
+                    requiresEmailCode = false,
+                    requiresBootstrap = true,
+                    bootstrapToken = "bootstrap-token-3",
+                    bootstrapExpiresIn = 300,
+                )
+            ),
+        )
+        coEvery { authApi.bootstrap(any(), any()) } returns envelope(
+            BootstrapDeviceResponseDto(
+                deviceId = 1,
+                deviceUuid = deviceUuid,
+                isActive = true,
+                prekeysCount = 100,
+            )
+        )
+
+        val result = repository.login(
+            nickname = "@alice",
+            password = "password123",
+            deviceUuid = deviceUuid,
+        )
+
+        require(result is AppResult.Error)
+        assertEquals("BOOTSTRAP_RETRY_LIMIT", result.code)
+        coVerify(exactly = 3) { authApi.login(any()) }
+        coVerify(exactly = 2) { authApi.bootstrap(any(), any()) }
+    }
+
+    @Test
     fun `login returns parsed backend error`() = runTest {
         coEvery { authApi.login(any()) } throws httpException(
             code = 403,

@@ -82,55 +82,55 @@ class AuthRepositoryImpl @Inject constructor(
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
 
         return try {
-            val response = authApi.login(
-                LoginRequestDto(
-                    nickname = nickname,
-                    password = password,
-                    deviceUuid = stableDeviceUuid,
-                    totpCode = totpCode?.trim()?.takeIf { it.isNotEmpty() },
-                )
-            )
+            var bootstrapAttempts = 0
 
-            val data = response.data
-
-            if (data.requiresBootstrap && !data.bootstrapToken.isNullOrBlank()) {
-                bootstrapDevice(
-                    bootstrapToken = data.bootstrapToken,
-                    deviceUuid = stableDeviceUuid,
+            while (true) {
+                val response = authApi.login(
+                    LoginRequestDto(
+                        nickname = nickname,
+                        password = password,
+                        deviceUuid = stableDeviceUuid,
+                        totpCode = totpCode?.trim()?.takeIf { it.isNotEmpty() },
+                    )
                 )
-                return login(
-                    nickname = nickname,
-                    password = password,
-                    deviceUuid = stableDeviceUuid,
-                    totpCode = totpCode,
-                )
-            }
 
-            if (!data.accessToken.isNullOrBlank() &&
-                !data.refreshToken.isNullOrBlank()
-            ) {
-                sessionLocalDataSource.saveFullSession(
-                    accessToken = data.accessToken,
-                    refreshToken = data.refreshToken,
-                    deviceUuid = stableDeviceUuid,
-                )
-            }
-
-            AppResult.Success(
-                LoginResult(
-                    requiresEmailCode = data.requiresEmailCode,
-                    requiresTotp = data.requiresTotp,
+                val data = response.data
+                when (val bootstrapResult = maybeBootstrapDevice(
                     requiresBootstrap = data.requiresBootstrap,
-                    loginChallengeId = data.loginChallengeId,
-                    emailMasked = data.emailMasked,
-                    debugCode = data.debugCode,
                     bootstrapToken = data.bootstrapToken,
-                    bootstrapExpiresIn = data.bootstrapExpiresIn,
-                    accessToken = data.accessToken,
-                    refreshToken = data.refreshToken,
-                    expiresIn = data.expiresIn,
-                )
-            )
+                    deviceUuid = stableDeviceUuid,
+                    bootstrapAttempts = bootstrapAttempts,
+                )) {
+                    BootstrapResult.NotRequired -> {
+                        persistSessionIfPresent(
+                            accessToken = data.accessToken,
+                            refreshToken = data.refreshToken,
+                            deviceUuid = stableDeviceUuid,
+                        )
+
+                        return AppResult.Success(
+                            LoginResult(
+                                requiresEmailCode = data.requiresEmailCode,
+                                requiresTotp = data.requiresTotp,
+                                requiresBootstrap = data.requiresBootstrap,
+                                loginChallengeId = data.loginChallengeId,
+                                emailMasked = data.emailMasked,
+                                debugCode = data.debugCode,
+                                bootstrapToken = data.bootstrapToken,
+                                bootstrapExpiresIn = data.bootstrapExpiresIn,
+                                accessToken = data.accessToken,
+                                refreshToken = data.refreshToken,
+                                expiresIn = data.expiresIn,
+                            )
+                        )
+                    }
+
+                    BootstrapResult.Retried -> bootstrapAttempts++
+                    is BootstrapResult.Error -> return bootstrapResult.result
+                }
+            }
+
+            error("Unreachable login bootstrap state")
         } catch (e: HttpException) {
             parseHttpError(e)
         } catch (e: Exception) {
@@ -210,43 +210,49 @@ class AuthRepositoryImpl @Inject constructor(
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
 
         return try {
-            val response = authApi.verifyEmailCode(
-                VerifyEmailCodeRequestDto(
-                    loginChallengeId = loginChallengeId,
-                    code = code,
-                    deviceUuid = stableDeviceUuid,
+            var bootstrapAttempts = 0
+
+            while (true) {
+                val response = authApi.verifyEmailCode(
+                    VerifyEmailCodeRequestDto(
+                        loginChallengeId = loginChallengeId,
+                        code = code,
+                        deviceUuid = stableDeviceUuid,
+                    )
                 )
-            )
 
-            val data = response.data
-
-            if (data.requiresBootstrap && !data.bootstrapToken.isNullOrBlank()) {
-                bootstrapDevice(
-                    bootstrapToken = data.bootstrapToken,
-                    deviceUuid = stableDeviceUuid,
-                )
-            }
-
-            if (!data.accessToken.isNullOrBlank() &&
-                !data.refreshToken.isNullOrBlank()
-            ) {
-                sessionLocalDataSource.saveFullSession(
-                    accessToken = data.accessToken,
-                    refreshToken = data.refreshToken,
-                    deviceUuid = stableDeviceUuid,
-                )
-            }
-
-            AppResult.Success(
-                VerifyEmailCodeResult(
+                val data = response.data
+                when (val bootstrapResult = maybeBootstrapDevice(
                     requiresBootstrap = data.requiresBootstrap,
                     bootstrapToken = data.bootstrapToken,
-                    bootstrapExpiresIn = data.bootstrapExpiresIn,
-                    accessToken = data.accessToken,
-                    refreshToken = data.refreshToken,
-                    expiresIn = data.expiresIn,
-                )
-            )
+                    deviceUuid = stableDeviceUuid,
+                    bootstrapAttempts = bootstrapAttempts,
+                )) {
+                    BootstrapResult.NotRequired -> {
+                        persistSessionIfPresent(
+                            accessToken = data.accessToken,
+                            refreshToken = data.refreshToken,
+                            deviceUuid = stableDeviceUuid,
+                        )
+
+                        return AppResult.Success(
+                            VerifyEmailCodeResult(
+                                requiresBootstrap = data.requiresBootstrap,
+                                bootstrapToken = data.bootstrapToken,
+                                bootstrapExpiresIn = data.bootstrapExpiresIn,
+                                accessToken = data.accessToken,
+                                refreshToken = data.refreshToken,
+                                expiresIn = data.expiresIn,
+                            )
+                        )
+                    }
+
+                    BootstrapResult.Retried -> bootstrapAttempts++
+                    is BootstrapResult.Error -> return bootstrapResult.result
+                }
+            }
+
+            error("Unreachable verifyEmailCode bootstrap state")
         } catch (e: HttpException) {
             parseHttpError(e)
         } catch (e: Exception) {
@@ -286,6 +292,52 @@ class AuthRepositoryImpl @Inject constructor(
         sessionLocalDataSource.saveDeviceUuid(deviceUuid)
     }
 
+    private suspend fun maybeBootstrapDevice(
+        requiresBootstrap: Boolean,
+        bootstrapToken: String?,
+        deviceUuid: String,
+        bootstrapAttempts: Int,
+    ): BootstrapResult {
+        if (!requiresBootstrap) return BootstrapResult.NotRequired
+
+        val normalizedToken = bootstrapToken?.trim().takeIf { !it.isNullOrEmpty() }
+            ?: return BootstrapResult.Error(
+                AppResult.Error(
+                    code = "BOOTSTRAP_TOKEN_MISSING",
+                    message = "Device bootstrap was requested without a bootstrap token",
+                )
+            )
+
+        if (bootstrapAttempts >= MAX_BOOTSTRAP_ATTEMPTS) {
+            return BootstrapResult.Error(
+                AppResult.Error(
+                    code = "BOOTSTRAP_RETRY_LIMIT",
+                    message = "Device bootstrap retry limit reached",
+                )
+            )
+        }
+
+        bootstrapDevice(
+            bootstrapToken = normalizedToken,
+            deviceUuid = deviceUuid,
+        )
+        return BootstrapResult.Retried
+    }
+
+    private fun persistSessionIfPresent(
+        accessToken: String?,
+        refreshToken: String?,
+        deviceUuid: String,
+    ) {
+        if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank()) return
+
+        sessionLocalDataSource.saveFullSession(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            deviceUuid = deviceUuid,
+        )
+    }
+
 
     private fun parseHttpError(e: HttpException): AppResult.Error {
         val raw = e.response()?.errorBody()?.string()
@@ -300,5 +352,15 @@ class AuthRepositoryImpl @Inject constructor(
             message = parsed?.error?.message ?: (e.message() ?: "HTTP ${e.code()}"),
             statusCode = e.code(),
         )
+    }
+
+    private sealed interface BootstrapResult {
+        data object NotRequired : BootstrapResult
+        data object Retried : BootstrapResult
+        data class Error(val result: AppResult.Error) : BootstrapResult
+    }
+
+    private companion object {
+        const val MAX_BOOTSTRAP_ATTEMPTS = 2
     }
 }

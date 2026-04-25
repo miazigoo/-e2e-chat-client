@@ -28,31 +28,35 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                runCatching {
+                val handledSuccessfully = runCatching {
                     when (intent.action) {
                         NotificationIntents.ACTION_REPLY -> handleReply(intent)
                         NotificationIntents.ACTION_MARK_READ -> handleMarkRead(intent)
+                        else -> false
                     }
+                }.getOrDefault(false)
+
+                if (handledSuccessfully) {
+                    intent.getIntExtra(NotificationIntents.EXTRA_NOTIFICATION_ID, -1)
+                        .takeIf { it > 0 }
+                        ?.let(pushNotificationManager::cancel)
                 }
-                intent.getIntExtra(NotificationIntents.EXTRA_NOTIFICATION_ID, -1)
-                    .takeIf { it > 0 }
-                    ?.let(pushNotificationManager::cancel)
             } finally {
                 pendingResult.finish()
             }
         }
     }
 
-    private suspend fun handleReply(intent: Intent) {
+    private suspend fun handleReply(intent: Intent): Boolean {
         val conversationId = intent.getIntExtra(NotificationIntents.EXTRA_CONVERSATION_ID, -1)
-        if (conversationId <= 0) return
+        if (conversationId <= 0) return false
 
         val replyText = RemoteInput.getResultsFromIntent(intent)
             ?.getCharSequence(NotificationIntents.REMOTE_INPUT_REPLY)
             ?.toString()
             ?.trim()
             .orEmpty()
-        if (replyText.isBlank()) return
+        if (replyText.isBlank()) return false
 
         val conversation = conversationRepository.getConversation(conversationId)
         messageRepository.sendMessage(
@@ -60,11 +64,12 @@ class NotificationActionReceiver : BroadcastReceiver() {
             recipientUserId = conversation.peerUserId,
             plainText = replyText,
         )
+        return true
     }
 
-    private suspend fun handleMarkRead(intent: Intent) {
+    private suspend fun handleMarkRead(intent: Intent): Boolean {
         val conversationId = intent.getIntExtra(NotificationIntents.EXTRA_CONVERSATION_ID, -1)
-        if (conversationId <= 0) return
+        if (conversationId <= 0) return false
 
         val conversation = conversationRepository.getConversation(conversationId)
         val messages = messageRepository.listMessages(
@@ -72,5 +77,6 @@ class NotificationActionReceiver : BroadcastReceiver() {
             peerUserId = conversation.peerUserId,
         )
         messageRepository.markIncomingMessagesAsRead(messages)
+        return true
     }
 }
