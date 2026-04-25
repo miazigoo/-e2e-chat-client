@@ -10,16 +10,19 @@ import com.example.securechatapp.data.remote.dto.CompleteUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentItemRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsRequestDto
+import com.example.securechatapp.data.repository.parseBackendApiException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 
 data class UploadedEncryptedAttachment(
     val attachmentId: Int,
@@ -31,6 +34,7 @@ class AttachmentUploadManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: ChatBackendApi,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
+    private val json: Json,
 ) {
     private val uploadHttpClient = OkHttpClient.Builder().build()
 
@@ -50,30 +54,34 @@ class AttachmentUploadManager @Inject constructor(
         val fileSize = querySize(uri) ?: fileBytes.size.toLong()
         val sha256 = sha256Hex(fileBytes)
 
-        val session = api.createUploadSession(
-            CreateUploadSessionRequestDto(
-                conversationId = conversationId,
-                filesExpectedCount = 1,
-            )
-        ).data
+        val session = apiCall {
+            api.createUploadSession(
+                CreateUploadSessionRequestDto(
+                    conversationId = conversationId,
+                    filesExpectedCount = 1,
+                )
+            ).data
+        }
 
-        val init = api.initAttachments(
-            sessionId = session.sessionId,
-            body = InitAttachmentsRequestDto(
-                items = listOf(
-                    InitAttachmentItemRequestDto(
-                        encryptedFileName = fileName,
-                        fileSize = fileSize,
-                        mimeHint = mimeType,
-                        sha256EncryptedBlob = sha256,
-                        encryptedMetadata = mapOf(
-                            "dev_attachment" to "true",
-                            "original_name" to fileName,
+        val init = apiCall {
+            api.initAttachments(
+                sessionId = session.sessionId,
+                body = InitAttachmentsRequestDto(
+                    items = listOf(
+                        InitAttachmentItemRequestDto(
+                            encryptedFileName = fileName,
+                            fileSize = fileSize,
+                            mimeHint = mimeType,
+                            sha256EncryptedBlob = sha256,
+                            encryptedMetadata = mapOf(
+                                "dev_attachment" to "true",
+                                "original_name" to fileName,
+                            ),
                         ),
                     )
                 )
-            )
-        ).data
+            ).data
+        }
 
         val item = init.items.firstOrNull() ?: error("Сервер не вернул attachment item")
         val uploadUrl = item.uploadUrl ?: error("Сервер не вернул upload_url")
@@ -93,12 +101,14 @@ class AttachmentUploadManager @Inject constructor(
         }
         response.close()
 
-        api.completeUploadSession(
-            sessionId = session.sessionId,
-            body = CompleteUploadSessionRequestDto(
-                attachmentIds = listOf(item.attachmentId)
+        apiCall {
+            api.completeUploadSession(
+                sessionId = session.sessionId,
+                body = CompleteUploadSessionRequestDto(
+                    attachmentIds = listOf(item.attachmentId)
+                )
             )
-        )
+        }
 
         item.attachmentId
     }
@@ -126,29 +136,33 @@ class AttachmentUploadManager @Inject constructor(
             encryptedFileName.ciphertext
         )
 
-        val session = api.createUploadSession(
-            CreateUploadSessionRequestDto(
-                conversationId = conversationId,
-                filesExpectedCount = 1,
-            )
-        ).data
+        val session = apiCall {
+            api.createUploadSession(
+                CreateUploadSessionRequestDto(
+                    conversationId = conversationId,
+                    filesExpectedCount = 1,
+                )
+            ).data
+        }
 
-        val init = api.initAttachments(
-            sessionId = session.sessionId,
-            body = InitAttachmentsRequestDto(
-                items = listOf(
-                    InitAttachmentItemRequestDto(
-                        encryptedFileName = encryptedFileNameBase64,
-                        fileSize = fileSize,
-                        mimeHint = mimeType,
-                        sha256EncryptedBlob = encryptedBlob.sha256EncryptedBlob,
-                        encryptedMetadata = mapOf(
-                            "transport" to "encrypted_blob_v1",
+        val init = apiCall {
+            api.initAttachments(
+                sessionId = session.sessionId,
+                body = InitAttachmentsRequestDto(
+                    items = listOf(
+                        InitAttachmentItemRequestDto(
+                            encryptedFileName = encryptedFileNameBase64,
+                            fileSize = fileSize,
+                            mimeHint = mimeType,
+                            sha256EncryptedBlob = encryptedBlob.sha256EncryptedBlob,
+                            encryptedMetadata = mapOf(
+                                "transport" to "encrypted_blob_v1",
+                            ),
                         ),
                     )
                 )
-            )
-        ).data
+            ).data
+        }
 
         val item = init.items.firstOrNull() ?: error("Сервер не вернул attachment item")
         val uploadUrl = item.uploadUrl ?: error("Сервер не вернул upload_url")
@@ -168,12 +182,14 @@ class AttachmentUploadManager @Inject constructor(
         }
         response.close()
 
-        api.completeUploadSession(
-            sessionId = session.sessionId,
-            body = CompleteUploadSessionRequestDto(
-                attachmentIds = listOf(item.attachmentId)
+        apiCall {
+            api.completeUploadSession(
+                sessionId = session.sessionId,
+                body = CompleteUploadSessionRequestDto(
+                    attachmentIds = listOf(item.attachmentId)
+                )
             )
-        )
+        }
 
         UploadedEncryptedAttachment(
             attachmentId = item.attachmentId,
@@ -220,5 +236,13 @@ class AttachmentUploadManager @Inject constructor(
     private fun sha256Hex(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         return digest.joinToString(separator = "") { b -> "%02x".format(b) }
+    }
+
+    private suspend fun <T> apiCall(block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (error: HttpException) {
+            throw parseBackendApiException(json, error)
+        }
     }
 }

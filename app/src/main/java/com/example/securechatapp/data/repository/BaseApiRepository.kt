@@ -4,6 +4,43 @@ import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
+class BackendApiException(
+    val code: String,
+    override val message: String,
+    val statusCode: Int? = null,
+) : IllegalStateException(message)
+
+fun parseBackendApiException(
+    json: Json,
+    exception: HttpException,
+): BackendApiException {
+    val body = exception.response()?.errorBody()?.string()
+    val parsed = body?.let {
+        runCatching {
+            json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it)
+        }.getOrNull()
+    }
+
+    val code = parsed?.error?.code ?: "HTTP_${exception.code()}"
+    val message = buildString {
+        append(
+            parsed?.error?.message ?: exception.message().orEmpty().ifBlank {
+                "HTTP ${exception.code()}"
+            }
+        )
+        if (!body.isNullOrBlank() && parsed == null) {
+            append(": ")
+            append(body)
+        }
+    }
+
+    return BackendApiException(
+        code = code,
+        message = message,
+        statusCode = exception.code(),
+    )
+}
+
 abstract class BaseApiRepository(
     private val json: Json,
 ) {
@@ -11,26 +48,7 @@ abstract class BaseApiRepository(
         try {
             return block()
         } catch (e: HttpException) {
-            val body = e.response()?.errorBody()?.string()
-            val parsed = body?.let {
-                runCatching {
-                    json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it)
-                }.getOrNull()
-            }
-
-            val fallbackMessage = buildString {
-                append(
-                    parsed?.error?.message ?: e.message().orEmpty().ifBlank {
-                        "HTTP ${e.code()}"
-                    }
-                )
-                if (!body.isNullOrBlank() && parsed == null) {
-                    append(": ")
-                    append(body)
-                }
-            }
-
-            throw IllegalStateException(fallbackMessage)
+            throw parseBackendApiException(json, e)
         }
     }
 }

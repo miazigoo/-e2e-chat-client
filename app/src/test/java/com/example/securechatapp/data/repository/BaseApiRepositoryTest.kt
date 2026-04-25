@@ -27,7 +27,8 @@ class BaseApiRepositoryTest {
             }
         }.exceptionOrNull()
 
-        require(error is IllegalStateException)
+        require(error is BackendApiException)
+        assertEquals("TOKEN_EXPIRED", error.code)
         assertEquals("Token expired", error.message)
     }
 
@@ -44,7 +45,8 @@ class BaseApiRepositoryTest {
             }
         }.exceptionOrNull()
 
-        require(error is IllegalStateException)
+        require(error is BackendApiException)
+        assertEquals("HTTP_500", error.code)
         assertTrue(error.message.orEmpty().contains("upstream gateway exploded"))
     }
 
