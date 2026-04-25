@@ -3,6 +3,7 @@ package com.example.securechatapp.data.files
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.example.securechatapp.app.di.StorageHttpClient
 import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.data.remote.api.ChatBackendApi
@@ -35,9 +36,8 @@ class AttachmentUploadManager @Inject constructor(
     private val api: ChatBackendApi,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
     private val json: Json,
+    @StorageHttpClient private val uploadHttpClient: OkHttpClient,
 ) {
-    private val uploadHttpClient = OkHttpClient.Builder().build()
-
     /**
      * Legacy dev/plain upload path.
      * Kept for compatibility until encrypted attachment transport is fully wired.

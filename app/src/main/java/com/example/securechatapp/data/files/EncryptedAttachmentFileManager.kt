@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
+import com.example.securechatapp.app.di.StorageHttpClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,7 +20,7 @@ import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 @Singleton
 class EncryptedAttachmentFileManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val okHttpClient: OkHttpClient,
+    @StorageHttpClient private val okHttpClient: OkHttpClient,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
 ) {
     private val prefs by lazy {
