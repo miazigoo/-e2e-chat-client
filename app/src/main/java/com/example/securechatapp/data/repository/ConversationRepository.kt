@@ -27,6 +27,11 @@ class ConversationRepository @Inject constructor(
                 peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
                 unreadCount = it.unreadCount,
                 lastMessagePreview = buildConversationPreview(it),
+                protectionMode = it.protectionMode,
+                messageTtlDays = it.messageTtlDays,
+                deleteAfterReadSeconds = it.deleteAfterReadSeconds,
+                isActive = it.isActive,
+                isPurged = it.isPurged,
                 updatedAt = it.lastMessage?.serverReceivedAt ?: it.updatedAt,
                 sharedSecretEnabled = it.sharedSecretEnabled,
                 sharedSecretFingerprint = it.sharedSecretFingerprint,
@@ -62,9 +67,13 @@ class ConversationRepository @Inject constructor(
             title = data.title ?: "Chat ${data.conversationId}",
             peerUserId = data.peerUserId,
             protectionMode = data.protectionMode,
+            messageTtlDays = data.messageTtlDays,
+            deleteAfterReadSeconds = data.deleteAfterReadSeconds,
             sharedSecretEnabled = data.sharedSecretEnabled,
             sharedSecretFingerprint = data.sharedSecretFingerprint,
             peerSharedSecretEnabled = data.peerSharedSecretEnabled,
+            isActive = data.isActive,
+            isPurged = data.isPurged,
         )
     }
 

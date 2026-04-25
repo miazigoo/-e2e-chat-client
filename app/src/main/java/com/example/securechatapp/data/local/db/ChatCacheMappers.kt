@@ -20,6 +20,7 @@ fun ConversationCacheEntity.toConversationListItem(): ConversationListItem {
         peerNickname = peerNickname,
         unreadCount = unreadCount,
         lastMessagePreview = lastMessagePreview,
+        protectionMode = protectionMode ?: "normal",
         updatedAt = updatedAt,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
@@ -34,9 +35,13 @@ fun ConversationCacheEntity.toConversationDetails(): ConversationDetails {
         title = title,
         peerUserId = peerUserId,
         protectionMode = protectionMode ?: "normal",
+        messageTtlDays = null,
+        deleteAfterReadSeconds = null,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
         peerSharedSecretEnabled = peerSharedSecretEnabled,
+        isActive = true,
+        isPurged = false,
     )
 }
 
@@ -50,7 +55,7 @@ fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): Conversat
         unreadCount = unreadCount,
         lastMessagePreview = lastMessagePreview,
         updatedAt = updatedAt,
-        protectionMode = previous?.protectionMode,
+        protectionMode = protectionMode,
         lastEventId = previous?.lastEventId,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,

@@ -55,6 +55,10 @@ data class ConversationUiState(
     val peerUserId: Int? = null,
     val conversationUuid: String = "",
     val protectionMode: String = "normal",
+    val messageTtlDays: Int? = null,
+    val deleteAfterReadSeconds: Int? = null,
+    val isConversationActive: Boolean = true,
+    val isConversationPurged: Boolean = false,
     val sharedSecretEnabled: Boolean = false,
     val sharedSecretFingerprint: String? = null,
     val localSharedSecretEnabled: Boolean = false,
@@ -534,6 +538,10 @@ private fun refreshSharedSecretState(
         title = details.title,
         peerUserId = details.peerUserId,
         protectionMode = details.protectionMode,
+        messageTtlDays = details.messageTtlDays,
+        deleteAfterReadSeconds = details.deleteAfterReadSeconds,
+        isConversationActive = details.isActive,
+        isConversationPurged = details.isPurged,
         sharedSecretEnabled = details.sharedSecretEnabled,
         sharedSecretFingerprint = details.sharedSecretFingerprint,
         peerSharedSecretEnabled = details.peerSharedSecretEnabled,
@@ -552,6 +560,10 @@ private fun refreshSharedSecretState(
                         title = details.title,
                         peerUserId = details.peerUserId,
                         protectionMode = details.protectionMode,
+                        messageTtlDays = details.messageTtlDays,
+                        deleteAfterReadSeconds = details.deleteAfterReadSeconds,
+                        isConversationActive = details.isActive,
+                        isConversationPurged = details.isPurged,
                         sharedSecretEnabled = details.sharedSecretEnabled,
                         sharedSecretFingerprint = details.sharedSecretFingerprint,
                         peerSharedSecretEnabled = details.peerSharedSecretEnabled,
@@ -760,16 +772,47 @@ private fun refreshSharedSecretState(
                 false
             }
 
+            ConversationEventTypes.CONVERSATION_SETTINGS_UPDATED -> {
+                refreshConversationDetails()
+
+                if (event.actorUserId == _state.value.peerUserId) {
+                    val enabled = event.payload?.stringValue("shared_secret_enabled")?.toBooleanStrictOrNull()
+                    _state.value = _state.value.copy(
+                        info = when (enabled) {
+                            true -> "Собеседник включил дополнительное шифрование"
+                            false -> "Собеседник выключил дополнительное шифрование"
+                            null -> "Настройки чата обновлены"
+                        }
+                    )
+                }
+                false
+            }
+
             ConversationEventTypes.MESSAGE_CREATED,
             ConversationEventTypes.MESSAGE_DELETED_GLOBAL,
             ConversationEventTypes.MESSAGE_HIDDEN_FOR_USER,
             ConversationEventTypes.CONVERSATION_CLEARED_LOCAL,
             ConversationEventTypes.CONVERSATION_CLEARED_GLOBAL,
+            ConversationEventTypes.MESSAGE_REACTION_SET,
+            ConversationEventTypes.MESSAGE_REACTION_REMOVED,
             ConversationEventTypes.FILE_UPLOADED,
             ConversationEventTypes.FILE_DELETED,
             ConversationEventTypes.CONVERSATION_PURGED -> true
 
             else -> true
+        }
+    }
+
+    private suspend fun refreshConversationDetails() {
+        val currentConversationId = _state.value.conversationId ?: return
+        runCatching {
+            val details = conversationRepository.getConversation(currentConversationId)
+            chatCacheRepository.upsertConversationDetails(details)
+            refreshSharedSecretState(details)
+        }.onFailure {
+            _state.value = _state.value.copy(
+                error = it.message ?: "Не удалось обновить данные чата",
+            )
         }
     }
 

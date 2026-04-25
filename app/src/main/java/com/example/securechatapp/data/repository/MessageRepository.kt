@@ -151,16 +151,30 @@ class MessageRepository @Inject constructor(
             error("Нельзя отправить пустое сообщение")
         }
 
+        val conversation = safe { api.getConversation(conversationId).data }
+        val conversationUuid = conversation.conversationUuid
+
+        if (conversation.isPurged) {
+            error("Чат был удалён на сервере")
+        }
+
+        if (!conversation.isActive) {
+            error("Чат недоступен для отправки сообщений")
+        }
+
         val payloadJson = buildEncryptedMessagePayload(
             plainText = plainText,
             attachmentDescriptors = normalizedDescriptors,
         )
 
-        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
         val sharedSecretPayload = sharedSecretCrypto.encryptIfEnabled(
             conversationUuid = conversationUuid,
             plainText = payloadJson,
         )
+        if (conversation.sharedSecretEnabled && sharedSecretPayload == null) {
+            error("Для этого чата нужно включить дополнительное шифрование на этом устройстве")
+        }
+
         val legacyEncrypted = if (sharedSecretPayload == null) {
             crypto.encryptPlainText(payloadJson)
         } else {

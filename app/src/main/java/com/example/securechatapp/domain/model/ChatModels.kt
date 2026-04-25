@@ -17,6 +17,11 @@ data class ConversationListItem(
     val peerNickname: String,
     val unreadCount: Int,
     val lastMessagePreview: String,
+    val protectionMode: String = "normal",
+    val messageTtlDays: Int? = null,
+    val deleteAfterReadSeconds: Int? = null,
+    val isActive: Boolean = true,
+    val isPurged: Boolean = false,
     val updatedAt: String? = null,
     val sharedSecretEnabled: Boolean = false,
     val sharedSecretFingerprint: String? = null,
@@ -30,9 +35,13 @@ data class ConversationDetails(
     val title: String,
     val peerUserId: Int,
     val protectionMode: String,
+    val messageTtlDays: Int? = null,
+    val deleteAfterReadSeconds: Int? = null,
     val sharedSecretEnabled: Boolean = false,
     val sharedSecretFingerprint: String? = null,
     val peerSharedSecretEnabled: Boolean = false,
+    val isActive: Boolean = true,
+    val isPurged: Boolean = false,
 )
 
 @Serializable

@@ -230,9 +230,19 @@ data class ConversationListItemDto(
     @SerialName("conversation_uuid")
     val conversationUuid: String,
     val title: String? = null,
+    @SerialName("protection_mode")
+    val protectionMode: String = "normal",
+    @SerialName("message_ttl_days")
+    val messageTtlDays: Int? = null,
+    @SerialName("delete_after_read_seconds")
+    val deleteAfterReadSeconds: Int? = null,
     val peer: ConversationPeerDto,
     @SerialName("unread_count")
     val unreadCount: Int,
+    @SerialName("is_active")
+    val isActive: Boolean = true,
+    @SerialName("is_purged")
+    val isPurged: Boolean = false,
     @SerialName("updated_at")
     val updatedAt: String? = null,
     @SerialName("last_message")
@@ -263,6 +273,10 @@ data class GetConversationResponseDto(
     val peerUserId: Int,
     @SerialName("protection_mode")
     val protectionMode: String,
+    @SerialName("message_ttl_days")
+    val messageTtlDays: Int? = null,
+    @SerialName("delete_after_read_seconds")
+    val deleteAfterReadSeconds: Int? = null,
     @SerialName("shared_secret_enabled")
     val sharedSecretEnabled: Boolean = false,
     @SerialName("shared_secret_fingerprint")
@@ -271,6 +285,10 @@ data class GetConversationResponseDto(
     val sharedSecretUpdatedAt: String? = null,
     @SerialName("peer_shared_secret_enabled")
     val peerSharedSecretEnabled: Boolean = false,
+    @SerialName("is_active")
+    val isActive: Boolean = true,
+    @SerialName("is_purged")
+    val isPurged: Boolean = false,
 )
 
 
