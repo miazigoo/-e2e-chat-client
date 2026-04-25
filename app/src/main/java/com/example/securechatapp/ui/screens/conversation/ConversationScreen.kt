@@ -307,25 +307,24 @@ fun ConversationScreen(
             )
         }
 
-
-if (showSharedSecretSettings) {
-    SharedSecretSettingsDialog(
-        enabledOnServer = state.sharedSecretEnabled,
-        enabledLocally = state.localSharedSecretEnabled,
-        fingerprint = state.sharedSecretFingerprint,
-        localFingerprint = state.localSharedSecretFingerprint,
-        peerEnabled = state.peerSharedSecretEnabled,
-        onDismiss = { showSharedSecretSettings = false },
-        onEnable = { token ->
-            viewModel.enableSharedSecret(token)
-            showSharedSecretSettings = false
-        },
-        onDisable = {
-            viewModel.disableSharedSecret()
-            showSharedSecretSettings = false
-        },
-    )
-}
+        if (showSharedSecretSettings) {
+            SharedSecretSettingsDialog(
+                enabledOnServer = state.sharedSecretEnabled,
+                enabledLocally = state.localSharedSecretEnabled,
+                fingerprint = state.sharedSecretFingerprint,
+                localFingerprint = state.localSharedSecretFingerprint,
+                peerEnabled = state.peerSharedSecretEnabled,
+                onDismiss = { showSharedSecretSettings = false },
+                onEnable = { token ->
+                    viewModel.enableSharedSecret(token)
+                    showSharedSecretSettings = false
+                },
+                onDisable = {
+                    viewModel.disableSharedSecret()
+                    showSharedSecretSettings = false
+                },
+            )
+        }
 
     }
 }

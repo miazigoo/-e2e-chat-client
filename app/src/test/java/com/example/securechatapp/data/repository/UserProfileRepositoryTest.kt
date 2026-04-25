@@ -7,6 +7,7 @@ import com.example.securechatapp.data.remote.dto.ApiEnvelopeDto
 import com.example.securechatapp.data.remote.dto.UpdateUserProfileRequestDto
 import com.example.securechatapp.data.remote.dto.UserProfileResponseDto
 import com.example.securechatapp.data.remote.dto.UserProfileSettingsDto
+import com.example.securechatapp.data.remote.dto.UserSafetyResponseDto
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -89,6 +90,32 @@ class UserProfileRepositoryTest {
                 )
             )
         }
+    }
+
+    @Test
+    fun `getUserSafety maps server state to domain model`() = runTest {
+        coEvery { api.getUserSafety(42) } returns ApiEnvelopeDto(
+            ok = true,
+            data = UserSafetyResponseDto(
+                userId = 42,
+                nickname = "bob",
+                canStartConversation = false,
+                isDeleted = false,
+                pendingDeletion = true,
+                hasActiveDevice = false,
+                supportsEncryptedChat = false,
+                safetyCodeAvailable = false,
+            ),
+        )
+
+        val result = repository.getUserSafety(42)
+
+        assertEquals(42, result.userId)
+        assertEquals("bob", result.nickname)
+        assertFalse(result.canStartConversation)
+        assertTrue(result.pendingDeletion)
+        assertFalse(result.hasActiveDevice)
+        assertFalse(result.supportsEncryptedChat)
     }
 
     private fun profileResponse(

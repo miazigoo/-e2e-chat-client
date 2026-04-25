@@ -162,20 +162,6 @@ class ConversationRepository @Inject constructor(
 
         return if (isMine) "Вы: $body" else body
     }
-
-    private fun buildPreviewText(
-        text: String,
-        hasAttachments: Boolean,
-        messageType: String,
-    ): String {
-        return when {
-            text.isNotBlank() -> text
-            hasAttachments && messageType == "file" -> "Вложение"
-            hasAttachments -> "Сообщение с вложением"
-            messageType == "service" -> "Сервисное сообщение"
-            else -> "Сообщение"
-        }
-    }
 }
 
 private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(): MessagePreview {

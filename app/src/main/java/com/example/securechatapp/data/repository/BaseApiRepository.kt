@@ -1,6 +1,7 @@
 package com.example.securechatapp.data.repository
 
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
+import java.io.IOException
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -47,6 +48,11 @@ abstract class BaseApiRepository(
     protected suspend fun <T> safe(block: suspend () -> T): T {
         try {
             return block()
+        } catch (e: IOException) {
+            throw BackendApiException(
+                code = "NETWORK_ERROR",
+                message = e.message ?: "Network request failed",
+            )
         } catch (e: HttpException) {
             throw parseBackendApiException(json, e)
         }

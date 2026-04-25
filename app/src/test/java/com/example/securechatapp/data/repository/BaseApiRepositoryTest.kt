@@ -1,5 +1,6 @@
 package com.example.securechatapp.data.repository
 
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -48,6 +49,21 @@ class BaseApiRepositoryTest {
         require(error is BackendApiException)
         assertEquals("HTTP_500", error.code)
         assertTrue(error.message.orEmpty().contains("upstream gateway exploded"))
+    }
+
+    @Test
+    fun `safe maps io exceptions to network error`() = runTest {
+        val repository = TestRepository(json)
+
+        val error = runCatching {
+            repository.runSafe<Unit> {
+                throw IOException("timeout")
+            }
+        }.exceptionOrNull()
+
+        require(error is BackendApiException)
+        assertEquals("NETWORK_ERROR", error.code)
+        assertEquals("timeout", error.message)
     }
 
     private fun httpException(
