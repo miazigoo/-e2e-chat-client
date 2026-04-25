@@ -22,6 +22,7 @@ data class ConversationEventsPage(
 
 object ConversationEventTypes {
     const val MESSAGE_CREATED = "message_created"
+    const val MESSAGE_FORWARDED = "message_forwarded"
     const val MESSAGE_DELETED_GLOBAL = "message_deleted_global"
     const val MESSAGE_HIDDEN_FOR_USER = "message_hidden_for_user"
     const val CONVERSATION_CLEARED_LOCAL = "conversation_cleared_local"
@@ -30,6 +31,8 @@ object ConversationEventTypes {
     const val MESSAGE_READ = "message_read"
     const val MESSAGE_REACTION_SET = "message_reaction_set"
     const val MESSAGE_REACTION_REMOVED = "message_reaction_removed"
+    const val MESSAGE_PINNED = "message_pinned"
+    const val MESSAGE_UNPINNED = "message_unpinned"
     const val CONVERSATION_SETTINGS_UPDATED = "conversation_settings_updated"
     const val FILE_UPLOADED = "file_uploaded"
     const val FILE_DELETED = "file_deleted"

@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.core.common.ConversationsRefreshBus
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
+import com.example.securechatapp.data.repository.AppUpdateRepository
 import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.SessionRepository
+import com.example.securechatapp.domain.model.AppReleaseInfo
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +26,7 @@ data class ChatsUiState(
     val info: String? = null,
     val users: List<UserSearchItem> = emptyList(),
     val conversations: List<ConversationListItem> = emptyList(),
+    val updateRelease: AppReleaseInfo? = null,
 )
 
 @HiltViewModel
@@ -33,6 +36,7 @@ class ChatsViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val conversationsRefreshBus: ConversationsRefreshBus,
+    private val appUpdateRepository: AppUpdateRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatsUiState())
@@ -140,6 +144,10 @@ class ChatsViewModel @Inject constructor(
         }
     }
 
+    fun dismissUpdateBanner() {
+        _state.value = _state.value.copy(updateRelease = null)
+    }
+
     private fun connectRealtime() {
         viewModelScope.launch {
             realtimeWebSocketManager.connectIfNeeded()
@@ -182,9 +190,27 @@ class ChatsViewModel @Inject constructor(
                         )
                     }
 
+                    is RealtimeEvent.AppUpdateAvailable -> {
+                        handleAppUpdateAvailable(event.release)
+                    }
+
                     else -> Unit
                 }
             }
+        }
+    }
+
+    private fun handleAppUpdateAvailable(release: AppReleaseInfo) {
+        viewModelScope.launch {
+            val enrichedRelease = runCatching {
+                appUpdateRepository.getLatestRelease()
+            }.getOrElse { release }
+
+            _state.value = _state.value.copy(
+                updateRelease = enrichedRelease,
+                info = "Доступно обновление ${enrichedRelease.versionName} (${enrichedRelease.versionCode})",
+                error = null,
+            )
         }
     }
 }

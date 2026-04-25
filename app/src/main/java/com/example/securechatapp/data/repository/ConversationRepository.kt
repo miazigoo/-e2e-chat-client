@@ -6,6 +6,8 @@ import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
 import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
+import com.example.securechatapp.domain.model.MessagePreview
+import com.example.securechatapp.domain.model.UserSafety
 import com.example.securechatapp.domain.model.UserSearchItem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,7 +24,8 @@ class ConversationRepository @Inject constructor(
             ConversationListItem(
                 conversationId = it.conversationId,
                 conversationUuid = it.conversationUuid,
-                title = it.title ?: (it.peer.nickname ?: "User ${it.peer.userId}"),
+                title = buildConversationTitle(it.title, it.isSavedMessages, it.peer.nickname, it.peer.userId),
+                isSavedMessages = it.isSavedMessages,
                 peerUserId = it.peer.userId,
                 peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
                 unreadCount = it.unreadCount,
@@ -36,6 +39,7 @@ class ConversationRepository @Inject constructor(
                 sharedSecretEnabled = it.sharedSecretEnabled,
                 sharedSecretFingerprint = it.sharedSecretFingerprint,
                 peerSharedSecretEnabled = it.peerSharedSecretEnabled,
+                pinnedMessage = it.pinnedMessage?.toDomain(),
             )
         }
     }
@@ -59,12 +63,27 @@ class ConversationRepository @Inject constructor(
         }.conversationId
     }
 
+    suspend fun getUserSafety(userId: Int): UserSafety {
+        val data = safe { api.getUserSafety(userId).data }
+        return UserSafety(
+            userId = data.userId,
+            nickname = data.nickname,
+            canStartConversation = data.canStartConversation,
+            isDeleted = data.isDeleted,
+            pendingDeletion = data.pendingDeletion,
+            hasActiveDevice = data.hasActiveDevice,
+            supportsEncryptedChat = data.supportsEncryptedChat,
+            safetyCodeAvailable = data.safetyCodeAvailable,
+        )
+    }
+
     suspend fun getConversation(conversationId: Int): ConversationDetails {
         val data = safe { api.getConversation(conversationId).data }
         return ConversationDetails(
             conversationId = data.conversationId,
             conversationUuid = data.conversationUuid,
-            title = data.title ?: "Chat ${data.conversationId}",
+            title = buildConversationTitle(data.title, data.isSavedMessages, null, data.peerUserId),
+            isSavedMessages = data.isSavedMessages,
             peerUserId = data.peerUserId,
             protectionMode = data.protectionMode,
             messageTtlDays = data.messageTtlDays,
@@ -74,6 +93,7 @@ class ConversationRepository @Inject constructor(
             peerSharedSecretEnabled = data.peerSharedSecretEnabled,
             isActive = data.isActive,
             isPurged = data.isPurged,
+            pinnedMessage = data.pinnedMessage?.toDomain(),
         )
     }
 
@@ -95,7 +115,46 @@ class ConversationRepository @Inject constructor(
         return getConversation(conversationId)
     }
 
+    suspend fun pinMessage(
+        conversationId: Int,
+        messageId: Int,
+    ): ConversationDetails {
+        safe {
+            api.pinMessage(
+                conversationId = conversationId,
+                messageId = messageId,
+            ).data
+        }
+        return getConversation(conversationId)
+    }
+
+    suspend fun unpinMessage(
+        conversationId: Int,
+    ): ConversationDetails {
+        safe { api.unpinMessage(conversationId).data }
+        return getConversation(conversationId)
+    }
+
+    private fun buildConversationTitle(
+        title: String?,
+        isSavedMessages: Boolean,
+        peerNickname: String?,
+        peerUserId: Int,
+    ): String {
+        return when {
+            isSavedMessages -> title ?: "Избранное"
+            !title.isNullOrBlank() -> title
+            !peerNickname.isNullOrBlank() -> peerNickname
+            else -> "User $peerUserId"
+        }
+    }
+
     private fun buildConversationPreview(item: ConversationListItemDto): String {
+        item.pinnedMessage?.let { pinned ->
+            val prefix = if (item.isSavedMessages) "Закреп" else "📌"
+            return "$prefix ${buildPreviewText(pinned.textFromCiphertext(), pinned.hasAttachments, pinned.messageType)}"
+        }
+
         val last = item.lastMessage ?: return "Нет сообщений"
         val isMine = last.senderUserId != item.peer.userId
 
@@ -108,4 +167,37 @@ class ConversationRepository @Inject constructor(
 
         return if (isMine) "Вы: $body" else body
     }
+
+    private fun buildPreviewText(
+        text: String,
+        hasAttachments: Boolean,
+        messageType: String,
+    ): String {
+        return when {
+            text.isNotBlank() -> text
+            hasAttachments && messageType == "file" -> "Вложение"
+            hasAttachments -> "Сообщение с вложением"
+            messageType == "service" -> "Сервисное сообщение"
+            else -> "Сообщение"
+        }
+    }
+}
+
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(): MessagePreview {
+    return MessagePreview(
+        messageId = messageId,
+        messageUuid = messageUuid,
+        senderUserId = senderUserId,
+        messageType = messageType,
+        text = textFromCiphertext(),
+        hasAttachments = hasAttachments,
+        clientCreatedAt = clientCreatedAt,
+    )
+}
+
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.textFromCiphertext(): String {
+    return ciphertext
+        .takeUnless { it.startsWith("ss1:") }
+        ?.takeIf { it.startsWith("{") }
+        ?: ""
 }

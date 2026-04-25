@@ -25,6 +25,7 @@ import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationEventTypes
 import com.example.securechatapp.domain.model.ConversationSyncEvent
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,6 +53,7 @@ data class ConversationUiState(
     val error: String? = null,
     val info: String? = null,
     val title: String = "",
+    val isSavedMessages: Boolean = false,
     val peerUserId: Int? = null,
     val conversationUuid: String = "",
     val protectionMode: String = "normal",
@@ -64,6 +66,7 @@ data class ConversationUiState(
     val localSharedSecretEnabled: Boolean = false,
     val localSharedSecretFingerprint: String? = null,
     val peerSharedSecretEnabled: Boolean = false,
+    val pinnedMessage: MessagePreview? = null,
     val messages: List<ChatMessage> = emptyList(),
     val attachmentSheetMessageId: Int? = null,
     val attachmentLocalStates: Map<Int, AttachmentLocalState> = emptyMap(),
@@ -296,6 +299,42 @@ fun disableSharedSecret() {
                 )
             }.onFailure {
                 _state.value = _state.value.copy(error = it.message ?: "Не удалось убрать реакцию")
+            }
+        }
+    }
+
+    fun pinMessage(messageId: Int) {
+        val currentConversationId = _state.value.conversationId ?: return
+        if (messageId <= 0) return
+
+        viewModelScope.launch {
+            runCatching {
+                val details = conversationRepository.pinMessage(
+                    conversationId = currentConversationId,
+                    messageId = messageId,
+                )
+                chatCacheRepository.upsertConversationDetails(details)
+                refreshSharedSecretState(details)
+                conversationsRefreshBus.requestRefresh()
+                _state.value = _state.value.copy(info = "Сообщение закреплено")
+            }.onFailure {
+                _state.value = _state.value.copy(error = it.message ?: "Не удалось закрепить сообщение")
+            }
+        }
+    }
+
+    fun unpinMessage() {
+        val currentConversationId = _state.value.conversationId ?: return
+
+        viewModelScope.launch {
+            runCatching {
+                val details = conversationRepository.unpinMessage(currentConversationId)
+                chatCacheRepository.upsertConversationDetails(details)
+                refreshSharedSecretState(details)
+                conversationsRefreshBus.requestRefresh()
+                _state.value = _state.value.copy(info = "Закреп снят")
+            }.onFailure {
+                _state.value = _state.value.copy(error = it.message ?: "Не удалось снять закреп")
             }
         }
     }
@@ -536,6 +575,7 @@ private fun refreshSharedSecretState(
         conversationId = details.conversationId,
         conversationUuid = details.conversationUuid,
         title = details.title,
+        isSavedMessages = details.isSavedMessages,
         peerUserId = details.peerUserId,
         protectionMode = details.protectionMode,
         messageTtlDays = details.messageTtlDays,
@@ -545,6 +585,7 @@ private fun refreshSharedSecretState(
         sharedSecretEnabled = details.sharedSecretEnabled,
         sharedSecretFingerprint = details.sharedSecretFingerprint,
         peerSharedSecretEnabled = details.peerSharedSecretEnabled,
+        pinnedMessage = details.pinnedMessage,
         localSharedSecretEnabled = localState.enabled,
         localSharedSecretFingerprint = localState.fingerprint,
     )
@@ -558,6 +599,7 @@ private fun refreshSharedSecretState(
                         conversationId = details.conversationId,
                         conversationUuid = details.conversationUuid,
                         title = details.title,
+                        isSavedMessages = details.isSavedMessages,
                         peerUserId = details.peerUserId,
                         protectionMode = details.protectionMode,
                         messageTtlDays = details.messageTtlDays,
@@ -567,6 +609,7 @@ private fun refreshSharedSecretState(
                         sharedSecretEnabled = details.sharedSecretEnabled,
                         sharedSecretFingerprint = details.sharedSecretFingerprint,
                         peerSharedSecretEnabled = details.peerSharedSecretEnabled,
+                        pinnedMessage = details.pinnedMessage,
                         localSharedSecretEnabled = sharedSecretCrypto.getState(details.conversationUuid).enabled,
                         localSharedSecretFingerprint = sharedSecretCrypto.getState(details.conversationUuid).fingerprint,
                     )
@@ -788,7 +831,15 @@ private fun refreshSharedSecretState(
                 false
             }
 
+            ConversationEventTypes.MESSAGE_PINNED,
+            ConversationEventTypes.MESSAGE_UNPINNED,
+            ConversationEventTypes.CONVERSATION_PURGED -> {
+                refreshConversationDetails()
+                true
+            }
+
             ConversationEventTypes.MESSAGE_CREATED,
+            ConversationEventTypes.MESSAGE_FORWARDED,
             ConversationEventTypes.MESSAGE_DELETED_GLOBAL,
             ConversationEventTypes.MESSAGE_HIDDEN_FOR_USER,
             ConversationEventTypes.CONVERSATION_CLEARED_LOCAL,
@@ -796,8 +847,7 @@ private fun refreshSharedSecretState(
             ConversationEventTypes.MESSAGE_REACTION_SET,
             ConversationEventTypes.MESSAGE_REACTION_REMOVED,
             ConversationEventTypes.FILE_UPLOADED,
-            ConversationEventTypes.FILE_DELETED,
-            ConversationEventTypes.CONVERSATION_PURGED -> true
+            ConversationEventTypes.FILE_DELETED -> true
 
             else -> true
         }

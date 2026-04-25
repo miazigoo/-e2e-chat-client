@@ -19,8 +19,11 @@ import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
 import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageReactionSummary
 import com.example.securechatapp.domain.model.MessageSendStatus
+import com.example.securechatapp.domain.model.SharedMessagesPage
+import com.example.securechatapp.domain.model.SharedTabCounts
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -55,8 +58,11 @@ class MessageRepository @Inject constructor(
                     text = decoded.text,
                     isMine = dto.senderUserId != peerUserId,
                     createdAt = dto.serverReceivedAt,
+                    clientCreatedAt = dto.clientCreatedAt,
                     deliveredAt = dto.deliveredAt,
                     readAt = dto.readAt,
+                    expiresAt = dto.expiresAt,
+                    messageType = dto.messageType,
                     hasAttachments = dto.hasAttachments || decoded.attachments.isNotEmpty(),
                     attachmentIds = decoded.attachments.map { it.attachmentId }.distinct(),
                     attachments = decoded.attachments,
@@ -69,8 +75,54 @@ class MessageRepository @Inject constructor(
                             me = reaction.me,
                         )
                     },
+                    replyToMessageId = dto.replyToMessageId,
+                    forwardFromMessageId = dto.forwardFromMessageId,
+                    replyPreview = dto.replyPreview?.toDomain(conversationUuid, ::decodeEncryptedMessagePayload),
+                    forwardPreview = dto.forwardPreview?.toDomain(conversationUuid, ::decodeEncryptedMessagePayload),
                 )
             }
+    }
+
+    suspend fun searchMessages(
+        conversationId: Int,
+        peerUserId: Int,
+        query: String,
+    ): List<ChatMessage> {
+        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        return safe {
+            api.searchMessages(
+                conversationId = conversationId,
+                query = query.trim(),
+            ).data
+        }.items.map { dto ->
+            dto.toDomainMessage(conversationUuid, peerUserId, ::decodeEncryptedMessagePayload)
+        }
+    }
+
+    suspend fun listSharedMessages(
+        conversationId: Int,
+        peerUserId: Int,
+        tab: String,
+    ): SharedMessagesPage {
+        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        val data = safe {
+            api.listSharedMessages(
+                conversationId = conversationId,
+                tab = tab,
+            ).data
+        }
+        return SharedMessagesPage(
+            conversationId = data.conversationId,
+            tab = data.tab,
+            counts = SharedTabCounts(
+                media = data.counts.media,
+                links = data.counts.links,
+                files = data.counts.files,
+            ),
+            items = data.items.map { dto ->
+                dto.toDomainMessage(conversationUuid, peerUserId, ::decodeEncryptedMessagePayload)
+            },
+        )
     }
 
     suspend fun markIncomingMessagesAsDelivered(
@@ -257,7 +309,7 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    private data class DecodedMessagePayload(
+    internal data class DecodedMessagePayload(
         val text: String,
         val attachments: List<AttachmentItem>,
     )
@@ -382,4 +434,56 @@ class MessageRepository @Inject constructor(
             else -> "attachment_$attachmentId"
         }
     }
+}
+
+private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMessage(
+    conversationUuid: String,
+    peerUserId: Int,
+    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
+): ChatMessage {
+    val decoded = decoder(conversationUuid, ciphertext, encryptionMode)
+    return ChatMessage(
+        messageId = messageId,
+        messageUuid = messageUuid,
+        text = decoded.text,
+        isMine = senderUserId != peerUserId,
+        createdAt = serverReceivedAt,
+        clientCreatedAt = clientCreatedAt,
+        deliveredAt = deliveredAt,
+        readAt = readAt,
+        expiresAt = expiresAt,
+        messageType = messageType,
+        hasAttachments = hasAttachments || decoded.attachments.isNotEmpty(),
+        attachmentIds = decoded.attachments.map { it.attachmentId }.distinct(),
+        attachments = decoded.attachments,
+        sendStatus = MessageSendStatus.SENT,
+        errorMessage = null,
+        reactions = reactions.map { reaction ->
+            MessageReactionSummary(
+                reaction = reaction.reaction,
+                count = reaction.count,
+                me = reaction.me,
+            )
+        },
+        replyToMessageId = replyToMessageId,
+        forwardFromMessageId = forwardFromMessageId,
+        replyPreview = replyPreview?.toDomain(conversationUuid, decoder),
+        forwardPreview = forwardPreview?.toDomain(conversationUuid, decoder),
+    )
+}
+
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(
+    conversationUuid: String,
+    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
+): MessagePreview {
+    val decoded = decoder(conversationUuid, ciphertext, "signal")
+    return MessagePreview(
+        messageId = messageId,
+        messageUuid = messageUuid,
+        senderUserId = senderUserId,
+        messageType = messageType,
+        text = decoded.text,
+        hasAttachments = hasAttachments || decoded.attachments.isNotEmpty(),
+        clientCreatedAt = clientCreatedAt,
+    )
 }

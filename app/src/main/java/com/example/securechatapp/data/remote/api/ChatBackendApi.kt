@@ -12,8 +12,6 @@ import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
-import com.example.securechatapp.data.remote.dto.SetMessageReactionResponseDto
-import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessageReactionResponseDto
 import com.example.securechatapp.data.remote.dto.DeviceHeartbeatResponseDto
 import com.example.securechatapp.data.remote.dto.GetConversationResponseDto
@@ -27,17 +25,23 @@ import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkDeliveredResponseDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadResponseDto
+import com.example.securechatapp.data.remote.dto.PinMessageResponseDto
 import com.example.securechatapp.data.remote.dto.RefreshRequestDto
 import com.example.securechatapp.data.remote.dto.RefreshResponseDto
 import com.example.securechatapp.data.remote.dto.RegisterRequestDto
 import com.example.securechatapp.data.remote.dto.RegisterResponseDto
 import com.example.securechatapp.data.remote.dto.RevokeCurrentDeviceResponseDto
+import com.example.securechatapp.data.remote.dto.SearchMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
+import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
+import com.example.securechatapp.data.remote.dto.SetMessageReactionResponseDto
+import com.example.securechatapp.data.remote.dto.SharedMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenRequestDto
 import com.example.securechatapp.data.remote.dto.ConversationSettingsResponseDto
 import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenResponseDto
+import com.example.securechatapp.data.remote.dto.UserSafetyResponseDto
 import com.example.securechatapp.data.remote.dto.UserSearchResponseDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeRequestDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeResponseDto
@@ -112,6 +116,11 @@ interface ChatBackendApi {
     @DELETE("users/me/avatar")
     suspend fun deleteMyAvatar(): ApiEnvelopeDto<UserProfileResponseDto>
 
+    @GET("users/{userId}/safety")
+    suspend fun getUserSafety(
+        @Path("userId") userId: Int,
+    ): ApiEnvelopeDto<UserSafetyResponseDto>
+
     @GET("users/{userId}/profile")
     suspend fun getUserProfile(
         @Path("userId") userId: Int,
@@ -130,18 +139,33 @@ interface ChatBackendApi {
         @Path("conversationId") conversationId: Int,
     ): ApiEnvelopeDto<GetConversationResponseDto>
 
-
-@PATCH("conversations/{conversationId}/settings")
-suspend fun updateConversationSettings(
-    @Path("conversationId") conversationId: Int,
-    @Body body: UpdateConversationSettingsRequestDto,
-): ApiEnvelopeDto<ConversationSettingsResponseDto>
+    @PATCH("conversations/{conversationId}/settings")
+    suspend fun updateConversationSettings(
+        @Path("conversationId") conversationId: Int,
+        @Body body: UpdateConversationSettingsRequestDto,
+    ): ApiEnvelopeDto<ConversationSettingsResponseDto>
 
     @GET("messages/conversations/{conversationId}")
     suspend fun listMessages(
         @Path("conversationId") conversationId: Int,
+        @Query("before_id") beforeId: Int? = null,
         @Query("limit") limit: Int = 100,
     ): ApiEnvelopeDto<ListMessagesResponseDto>
+
+    @GET("messages/conversations/{conversationId}/search")
+    suspend fun searchMessages(
+        @Path("conversationId") conversationId: Int,
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 50,
+    ): ApiEnvelopeDto<SearchMessagesResponseDto>
+
+    @GET("messages/conversations/{conversationId}/shared")
+    suspend fun listSharedMessages(
+        @Path("conversationId") conversationId: Int,
+        @Query("tab") tab: String,
+        @Query("before_message_id") beforeMessageId: Int? = null,
+        @Query("limit") limit: Int = 50,
+    ): ApiEnvelopeDto<SharedMessagesResponseDto>
 
     @POST("messages/send")
     suspend fun sendMessage(
@@ -180,6 +204,17 @@ suspend fun updateConversationSettings(
     suspend fun deleteMessageReaction(
         @Path("messageId") messageId: Int,
     ): ApiEnvelopeDto<DeleteMessageReactionResponseDto>
+
+    @POST("messages/conversations/{conversationId}/pin/{messageId}")
+    suspend fun pinMessage(
+        @Path("conversationId") conversationId: Int,
+        @Path("messageId") messageId: Int,
+    ): ApiEnvelopeDto<PinMessageResponseDto>
+
+    @DELETE("messages/conversations/{conversationId}/pin")
+    suspend fun unpinMessage(
+        @Path("conversationId") conversationId: Int,
+    ): ApiEnvelopeDto<PinMessageResponseDto>
 
     @POST("files/upload-sessions")
     suspend fun createUploadSession(

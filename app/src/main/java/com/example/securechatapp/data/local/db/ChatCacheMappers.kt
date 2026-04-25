@@ -6,6 +6,7 @@ import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageReactionSummary
 import com.example.securechatapp.domain.model.MessageSendStatus
 import kotlinx.serialization.builtins.ListSerializer
@@ -16,15 +17,21 @@ fun ConversationCacheEntity.toConversationListItem(): ConversationListItem {
         conversationId = conversationId,
         conversationUuid = conversationUuid,
         title = title,
+        isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
         peerNickname = peerNickname,
         unreadCount = unreadCount,
         lastMessagePreview = lastMessagePreview,
         protectionMode = protectionMode ?: "normal",
+        messageTtlDays = messageTtlDays,
+        deleteAfterReadSeconds = deleteAfterReadSeconds,
+        isActive = isActive,
+        isPurged = isPurged,
         updatedAt = updatedAt,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
         peerSharedSecretEnabled = peerSharedSecretEnabled,
+        pinnedMessage = decodeMessagePreviewJson(pinnedMessageJson),
     )
 }
 
@@ -33,15 +40,17 @@ fun ConversationCacheEntity.toConversationDetails(): ConversationDetails {
         conversationId = conversationId,
         conversationUuid = conversationUuid,
         title = title,
+        isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
         protectionMode = protectionMode ?: "normal",
-        messageTtlDays = null,
-        deleteAfterReadSeconds = null,
+        messageTtlDays = messageTtlDays,
+        deleteAfterReadSeconds = deleteAfterReadSeconds,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
         peerSharedSecretEnabled = peerSharedSecretEnabled,
-        isActive = true,
-        isPurged = false,
+        isActive = isActive,
+        isPurged = isPurged,
+        pinnedMessage = decodeMessagePreviewJson(pinnedMessageJson),
     )
 }
 
@@ -50,16 +59,22 @@ fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): Conversat
         conversationId = conversationId,
         conversationUuid = conversationUuid,
         title = title,
+        isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
         peerNickname = peerNickname,
         unreadCount = unreadCount,
         lastMessagePreview = lastMessagePreview,
         updatedAt = updatedAt,
         protectionMode = protectionMode,
+        messageTtlDays = messageTtlDays,
+        deleteAfterReadSeconds = deleteAfterReadSeconds,
+        isActive = isActive,
+        isPurged = isPurged,
         lastEventId = previous?.lastEventId,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
         peerSharedSecretEnabled = peerSharedSecretEnabled,
+        pinnedMessageJson = encodeMessagePreviewJson(pinnedMessage),
     )
 }
 
@@ -68,16 +83,22 @@ fun ConversationDetails.toEntity(previous: ConversationCacheEntity?): Conversati
         conversationId = conversationId,
         conversationUuid = conversationUuid,
         title = title,
+        isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
         peerNickname = previous?.peerNickname.orEmpty(),
         unreadCount = previous?.unreadCount ?: 0,
         lastMessagePreview = previous?.lastMessagePreview ?: "Нет сообщений",
         updatedAt = previous?.updatedAt,
         protectionMode = protectionMode,
+        messageTtlDays = messageTtlDays,
+        deleteAfterReadSeconds = deleteAfterReadSeconds,
+        isActive = isActive,
+        isPurged = isPurged,
         lastEventId = previous?.lastEventId,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
         peerSharedSecretEnabled = peerSharedSecretEnabled,
+        pinnedMessageJson = encodeMessagePreviewJson(pinnedMessage),
     )
 }
 
@@ -90,6 +111,7 @@ fun MessageCacheEntity.toDomain(
         text = text,
         isMine = isMine,
         createdAt = createdAt,
+        clientCreatedAt = createdAt,
         deliveredAt = deliveredAt,
         readAt = readAt,
         hasAttachments = hasAttachments,
@@ -178,4 +200,19 @@ fun decodeReactionsJson(
             raw,
         )
     }.getOrDefault(emptyList())
+}
+
+private fun encodeMessagePreviewJson(
+    preview: MessagePreview?,
+): String? {
+    return preview?.let { Json.encodeToString(MessagePreview.serializer(), it) }
+}
+
+private fun decodeMessagePreviewJson(
+    raw: String?,
+): MessagePreview? {
+    if (raw.isNullOrBlank()) return null
+    return runCatching {
+        Json.decodeFromString(MessagePreview.serializer(), raw)
+    }.getOrNull()
 }

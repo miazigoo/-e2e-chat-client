@@ -126,6 +126,13 @@ fun ChatsScreen(
                     InfoBanner(text = it)
                 }
 
+                state.updateRelease?.let { release ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoBanner(
+                        text = "Доступно обновление ${release.versionName} (${release.versionCode})",
+                    )
+                }
+
                 if (search.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     SectionTitle("Результаты поиска")
@@ -318,7 +325,7 @@ private fun ChatListItem(
                 modifier = Modifier.weight(1f),
             ) {
                 Text(
-                    text = item.title,
+                    text = if (item.isSavedMessages) "🔖 ${item.title}" else item.title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -354,7 +361,11 @@ private fun ChatListItem(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = item.lastMessagePreview,
+                    text = if (item.pinnedMessage != null) {
+                        "📌 ${item.lastMessagePreview}"
+                    } else {
+                        item.lastMessagePreview
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

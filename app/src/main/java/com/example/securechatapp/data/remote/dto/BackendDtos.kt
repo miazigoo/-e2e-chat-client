@@ -184,6 +184,25 @@ data class UserSearchResponseDto(
 )
 
 @Serializable
+data class UserSafetyResponseDto(
+    @SerialName("user_id")
+    val userId: Int,
+    val nickname: String,
+    @SerialName("can_start_conversation")
+    val canStartConversation: Boolean,
+    @SerialName("is_deleted")
+    val isDeleted: Boolean,
+    @SerialName("pending_deletion")
+    val pendingDeletion: Boolean,
+    @SerialName("has_active_device")
+    val hasActiveDevice: Boolean,
+    @SerialName("supports_encrypted_chat")
+    val supportsEncryptedChat: Boolean,
+    @SerialName("safety_code_available")
+    val safetyCodeAvailable: Boolean,
+)
+
+@Serializable
 data class UserProfileSettingsDto(
     @SerialName("language_code")
     val languageCode: String,
@@ -322,14 +341,8 @@ data class CreateConversationResponseDto(
     val recipientUserId: Int,
     @SerialName("protection_mode")
     val protectionMode: String,
-    @SerialName("shared_secret_enabled")
-    val sharedSecretEnabled: Boolean = false,
-    @SerialName("shared_secret_fingerprint")
-    val sharedSecretFingerprint: String? = null,
-    @SerialName("shared_secret_updated_at")
-    val sharedSecretUpdatedAt: String? = null,
-    @SerialName("peer_shared_secret_enabled")
-    val peerSharedSecretEnabled: Boolean = false,
+    @SerialName("is_saved_messages")
+    val isSavedMessages: Boolean = false,
 )
 
 @Serializable
@@ -346,6 +359,8 @@ data class ConversationListItemDto(
     @SerialName("conversation_uuid")
     val conversationUuid: String,
     val title: String? = null,
+    @SerialName("is_saved_messages")
+    val isSavedMessages: Boolean = false,
     @SerialName("protection_mode")
     val protectionMode: String = "normal",
     @SerialName("message_ttl_days")
@@ -371,6 +386,8 @@ data class ConversationListItemDto(
     val sharedSecretUpdatedAt: String? = null,
     @SerialName("peer_shared_secret_enabled")
     val peerSharedSecretEnabled: Boolean = false,
+    @SerialName("pinned_message")
+    val pinnedMessage: MessagePreviewDto? = null,
 )
 
 @Serializable
@@ -387,6 +404,8 @@ data class GetConversationResponseDto(
     val title: String? = null,
     @SerialName("peer_user_id")
     val peerUserId: Int,
+    @SerialName("is_saved_messages")
+    val isSavedMessages: Boolean = false,
     @SerialName("protection_mode")
     val protectionMode: String,
     @SerialName("message_ttl_days")
@@ -405,6 +424,8 @@ data class GetConversationResponseDto(
     val isActive: Boolean = true,
     @SerialName("is_purged")
     val isPurged: Boolean = false,
+    @SerialName("pinned_message")
+    val pinnedMessage: MessagePreviewDto? = null,
 )
 
 
@@ -450,6 +471,10 @@ data class SendMessageRequestDto(
     val aadHash: String? = null,
     @SerialName("client_created_at")
     val clientCreatedAt: String,
+    @SerialName("reply_to_message_id")
+    val replyToMessageId: Int? = null,
+    @SerialName("expires_at")
+    val expiresAt: String? = null,
     @SerialName("attachment_ids")
     val attachmentIds: List<Int> = emptyList(),
 )
@@ -483,6 +508,23 @@ data class MessageReactionSummaryDto(
 )
 
 @Serializable
+data class MessagePreviewDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    @SerialName("message_uuid")
+    val messageUuid: String,
+    @SerialName("sender_user_id")
+    val senderUserId: Int,
+    @SerialName("message_type")
+    val messageType: String = "text",
+    val ciphertext: String,
+    @SerialName("has_attachments")
+    val hasAttachments: Boolean = false,
+    @SerialName("client_created_at")
+    val clientCreatedAt: String,
+)
+
+@Serializable
 data class MessageItemDto(
     @SerialName("message_id")
     val messageId: Int,
@@ -510,13 +552,47 @@ data class MessageItemDto(
     val deliveredAt: String? = null,
     @SerialName("read_at")
     val readAt: String? = null,
+    @SerialName("expires_at")
+    val expiresAt: String? = null,
     @SerialName("has_attachments")
     val hasAttachments: Boolean = false,
+    @SerialName("reply_to_message_id")
+    val replyToMessageId: Int? = null,
+    @SerialName("forward_from_message_id")
+    val forwardFromMessageId: Int? = null,
+    @SerialName("reply_preview")
+    val replyPreview: MessagePreviewDto? = null,
+    @SerialName("forward_preview")
+    val forwardPreview: MessagePreviewDto? = null,
     val reactions: List<MessageReactionSummaryDto> = emptyList(),
 )
 
 @Serializable
 data class ListMessagesResponseDto(
+    val items: List<MessageItemDto> = emptyList(),
+)
+
+@Serializable
+data class SearchMessagesResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    val query: String,
+    val items: List<MessageItemDto> = emptyList(),
+)
+
+@Serializable
+data class SharedTabCountsDto(
+    val media: Int = 0,
+    val links: Int = 0,
+    val files: Int = 0,
+)
+
+@Serializable
+data class SharedMessagesResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    val tab: String,
+    val counts: SharedTabCountsDto,
     val items: List<MessageItemDto> = emptyList(),
 )
 
@@ -771,6 +847,15 @@ data class DeleteMessageReactionResponseDto(
     @SerialName("message_id")
     val messageId: Int,
     val removed: Boolean,
+)
+
+@Serializable
+data class PinMessageResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    @SerialName("message_id")
+    val messageId: Int? = null,
+    val pinned: Boolean,
 )
 
 @Serializable

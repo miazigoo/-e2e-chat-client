@@ -15,7 +15,7 @@ import com.example.securechatapp.data.local.entity.PendingMessageOutboxEntity
         MessageCacheEntity::class,
         PendingMessageOutboxEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class SecureChatDatabase : RoomDatabase() {

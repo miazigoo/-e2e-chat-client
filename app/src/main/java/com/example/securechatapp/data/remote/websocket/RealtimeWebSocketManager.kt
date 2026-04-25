@@ -2,6 +2,7 @@ package com.example.securechatapp.data.remote.websocket
 
 import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
+import com.example.securechatapp.domain.model.AppReleaseInfo
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,9 @@ sealed interface RealtimeEvent {
     data class ConversationEvent(
         val conversationId: Int,
         val eventType: String,
+    ) : RealtimeEvent
+    data class AppUpdateAvailable(
+        val release: AppReleaseInfo,
     ) : RealtimeEvent
     data class Error(
         val code: String? = null,
@@ -266,6 +270,38 @@ class RealtimeWebSocketManager @Inject constructor(
                     )
                 )
             }
+
+            "app_update_available" -> {
+                val release = parsed["release"]?.jsonObject ?: return
+                val versionCode = release["version_code"]?.jsonPrimitive?.intOrNull ?: return
+                val fileSize = release["file_size"]?.jsonPrimitive?.longOrNull ?: 0L
+                val uploadedAt = release["uploaded_at"]?.jsonPrimitive?.contentOrNull ?: return
+                val versionName = release["version_name"]?.jsonPrimitive?.contentOrNull ?: return
+                val fileName = release["file_name"]?.jsonPrimitive?.contentOrNull ?: return
+                val platform = release["platform"]?.jsonPrimitive?.contentOrNull ?: "android"
+                val sha256 = release["sha256"]?.jsonPrimitive?.contentOrNull ?: ""
+                val changelog = release["changelog"]?.jsonPrimitive?.contentOrNull
+                val contentType = release["content_type"]?.jsonPrimitive?.contentOrNull
+                    ?: "application/vnd.android.package-archive"
+
+                _events.emit(
+                    RealtimeEvent.AppUpdateAvailable(
+                        release = AppReleaseInfo(
+                            platform = platform,
+                            versionName = versionName,
+                            versionCode = versionCode,
+                            fileName = fileName,
+                            fileSize = fileSize,
+                            sha256 = sha256,
+                            changelog = changelog,
+                            contentType = contentType,
+                            uploadedAt = uploadedAt,
+                            downloadUrl = "",
+                            downloadUrlExpiresIn = 0,
+                        )
+                    )
+                )
+            }
         }
     }
 
@@ -287,6 +323,9 @@ class RealtimeWebSocketManager @Inject constructor(
 
 private val kotlinx.serialization.json.JsonPrimitive.intOrNull: Int?
     get() = content.toIntOrNull()
+
+private val kotlinx.serialization.json.JsonPrimitive.longOrNull: Long?
+    get() = content.toLongOrNull()
 
 private val kotlinx.serialization.json.JsonPrimitive.contentOrNull: String?
     get() = runCatching { content }.getOrNull()

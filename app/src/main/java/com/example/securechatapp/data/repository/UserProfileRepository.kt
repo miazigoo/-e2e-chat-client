@@ -7,6 +7,7 @@ import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.UpdateUserProfileRequestDto
 import com.example.securechatapp.domain.model.UserProfile
 import com.example.securechatapp.domain.model.UserProfileSettings
+import com.example.securechatapp.domain.model.UserSafety
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -70,6 +71,20 @@ class UserProfileRepository @Inject constructor(
 
     suspend fun deleteMyAvatar(): UserProfile {
         return safe { api.deleteMyAvatar().data }.toDomain()
+    }
+
+    suspend fun getUserSafety(userId: Int): UserSafety {
+        val data = safe { api.getUserSafety(userId).data }
+        return UserSafety(
+            userId = data.userId,
+            nickname = data.nickname,
+            canStartConversation = data.canStartConversation,
+            isDeleted = data.isDeleted,
+            pendingDeletion = data.pendingDeletion,
+            hasActiveDevice = data.hasActiveDevice,
+            supportsEncryptedChat = data.supportsEncryptedChat,
+            safetyCodeAvailable = data.safetyCodeAvailable,
+        )
     }
 
     private fun queryDisplayName(uri: Uri): String? {

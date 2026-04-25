@@ -19,6 +19,17 @@ data class UserProfile(
     val settings: UserProfileSettings,
 )
 
+data class UserSafety(
+    val userId: Int,
+    val nickname: String,
+    val canStartConversation: Boolean,
+    val isDeleted: Boolean,
+    val pendingDeletion: Boolean,
+    val hasActiveDevice: Boolean,
+    val supportsEncryptedChat: Boolean,
+    val safetyCodeAvailable: Boolean,
+)
+
 data class AppReleaseInfo(
     val platform: String,
     val versionName: String,

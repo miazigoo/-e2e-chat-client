@@ -49,6 +49,7 @@ fun MessageBubble(
     onRemovePending: () -> Unit = {},
     onSetReaction: (String) -> Unit = {},
     onRemoveReaction: () -> Unit = {},
+    onPinMessage: () -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
     val bubbleColor = when {
@@ -242,6 +243,16 @@ fun MessageBubble(
                         onClick = {
                             menuExpanded = false
                             onRemoveReaction()
+                        },
+                    )
+                }
+
+                if (msg.messageId > 0) {
+                    DropdownMenuItem(
+                        text = { Text("Закрепить") },
+                        onClick = {
+                            menuExpanded = false
+                            onPinMessage()
                         },
                     )
                 }

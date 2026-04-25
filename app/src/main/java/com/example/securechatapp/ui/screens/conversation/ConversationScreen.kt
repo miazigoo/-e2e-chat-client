@@ -109,7 +109,11 @@ fun ConversationScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             ConversationTopBar(
-                title = if (state.title.isBlank()) "Диалог" else state.title,
+                title = when {
+                    state.title.isNotBlank() -> state.title
+                    state.isSavedMessages -> "Избранное"
+                    else -> "Диалог"
+                },
                 subtitle = subtitle,
                 onBack = onBack,
                 onLogout = { viewModel.logout(onLoggedOut) },
@@ -129,6 +133,19 @@ fun ConversationScreen(
 
             conversationBlockedReason?.let {
                 Banner(text = it, isError = state.isConversationPurged)
+            }
+
+            state.pinnedMessage?.let { pinned ->
+                Banner(
+                    text = buildString {
+                        append("📌 ")
+                        append(
+                            pinned.text.ifBlank {
+                                if (pinned.hasAttachments) "Закреплено вложение" else "Закреплённое сообщение"
+                            }
+                        )
+                    }
+                )
             }
 
             LazyColumn(
@@ -181,6 +198,9 @@ fun ConversationScreen(
                                 },
                                 onRemoveReaction = {
                                     viewModel.removeMessageReaction(row.message.messageId)
+                                },
+                                onPinMessage = {
+                                    viewModel.pinMessage(row.message.messageId)
                                 },
                             )
                         }
@@ -249,6 +269,17 @@ fun ConversationScreen(
                 placeholder = composerPlaceholder,
                 sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
             )
+
+            if (state.pinnedMessage != null) {
+                TextButton(
+                    onClick = viewModel::unpinMessage,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(end = 10.dp, bottom = 4.dp),
+                ) {
+                    Text("Снять закреп")
+                }
+            }
         }
 
         if (state.attachmentSheetMessageId != null) {
