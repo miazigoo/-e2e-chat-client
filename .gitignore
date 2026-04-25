@@ -71,7 +71,7 @@ venv.bak/
 devandprod_backend/.env
 pgdump_cms/*
 .kotlin
-
+.codex
 
 
 

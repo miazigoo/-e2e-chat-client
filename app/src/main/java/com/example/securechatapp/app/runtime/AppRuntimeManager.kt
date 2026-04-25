@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +36,7 @@ class AppRuntimeManager @Inject constructor(
 
     private var heartbeatJob: Job? = null
     private var outboxJob: Job? = null
+    private var realtimeReconnectJob: Job? = null
     private var sessionObserverJob: Job? = null
 
     fun start() {
@@ -67,7 +69,7 @@ class AppRuntimeManager @Inject constructor(
     private suspend fun refreshRuntimeState() {
         stateMutex.withLock {
             val session = sessionLocalDataSource.getSessionSnapshot()
-            val authorized = !session?.accessToken.isNullOrBlank()
+            val authorized = !session.accessToken.isNullOrBlank()
 
             if (authorized && isForeground) {
                 activateRuntime()
@@ -83,14 +85,18 @@ class AppRuntimeManager @Inject constructor(
         outboxDispatcher.drainAll()
         ensureHeartbeatLoop()
         ensureOutboxLoop()
+        ensureRealtimeReconnectLoop()
     }
 
-    private fun deactivateRuntime() {
+    private suspend fun deactivateRuntime() {
         heartbeatJob?.cancel()
         heartbeatJob = null
 
         outboxJob?.cancel()
         outboxJob = null
+
+        realtimeReconnectJob?.cancel()
+        realtimeReconnectJob = null
 
         realtimeWebSocketManager.disconnect()
     }
@@ -99,7 +105,7 @@ class AppRuntimeManager @Inject constructor(
         if (heartbeatJob != null) return
 
         heartbeatJob = scope.launch {
-            while (true) {
+            while (isActive) {
                 runCatching {
                     sessionRepository.heartbeat()
                 }
@@ -112,11 +118,24 @@ class AppRuntimeManager @Inject constructor(
         if (outboxJob != null) return
 
         outboxJob = scope.launch {
-            while (true) {
+            while (isActive) {
                 runCatching {
                     outboxDispatcher.drainAll()
                 }
                 delay(8_000L)
+            }
+        }
+    }
+
+    private fun ensureRealtimeReconnectLoop() {
+        if (realtimeReconnectJob != null) return
+
+        realtimeReconnectJob = scope.launch {
+            while (isActive) {
+                runCatching {
+                    realtimeWebSocketManager.connectIfNeeded()
+                }
+                delay(10_000L)
             }
         }
     }

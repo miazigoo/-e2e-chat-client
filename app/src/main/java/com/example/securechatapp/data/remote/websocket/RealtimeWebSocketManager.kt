@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -44,6 +46,7 @@ class RealtimeWebSocketManager @Inject constructor(
     private val json: Json,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stateMutex = Mutex()
 
     private var webSocket: WebSocket? = null
     private var isConnected: Boolean = false
@@ -55,9 +58,7 @@ class RealtimeWebSocketManager @Inject constructor(
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
     suspend fun connectIfNeeded(): Boolean {
-        if (webSocket != null) return true
-
-        val session = sessionLocalDataSource.getSessionSnapshot() ?: return false
+        val session = sessionLocalDataSource.getSessionSnapshot()
         val accessToken = session.accessToken?.takeIf { it.isNotBlank() } ?: return false
         val deviceUuid = session.deviceUuid?.takeIf { it.isNotBlank() } ?: return false
 
@@ -67,14 +68,16 @@ class RealtimeWebSocketManager @Inject constructor(
             .header("X-Device-UUID", deviceUuid)
             .build()
 
-        webSocket = okHttpClient.newWebSocket(
+        stateMutex.withLock {
+            if (webSocket != null) return true
+        }
+
+        val createdSocket = okHttpClient.newWebSocket(
             request,
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
-                    isConnected = true
-                    startKeepAlive()
-
                     scope.launch {
+                        handleSocketOpened(webSocket)
                         _events.emit(RealtimeEvent.Connected)
                         resubscribeAll()
                     }
@@ -87,19 +90,15 @@ class RealtimeWebSocketManager @Inject constructor(
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
+                        handleSocketClosed(webSocket)
                         _events.emit(RealtimeEvent.Disconnected)
                     }
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
+                        handleSocketClosed(webSocket)
                         _events.emit(RealtimeEvent.Disconnected)
                     }
                 }
@@ -109,83 +108,115 @@ class RealtimeWebSocketManager @Inject constructor(
                     t: Throwable,
                     response: okhttp3.Response?,
                 ) {
-                    stopKeepAlive()
-                    isConnected = false
-                    this@RealtimeWebSocketManager.webSocket = null
                     scope.launch {
+                        handleSocketClosed(webSocket)
                         _events.emit(
                             RealtimeEvent.Error(
                                 message = t.message ?: "WebSocket failure"
                             )
                         )
+                        _events.emit(RealtimeEvent.Disconnected)
                     }
                 }
             }
         )
 
+        stateMutex.withLock {
+            if (webSocket == null) {
+                webSocket = createdSocket
+                return true
+            }
+        }
+
+        createdSocket.close(1000, "duplicate_socket")
         return true
     }
 
     fun disconnect() {
-        stopKeepAlive()
-        webSocket?.close(1000, "client_disconnect")
-        webSocket = null
-        isConnected = false
+        scope.launch {
+            val socketToClose = stateMutex.withLock {
+                stopKeepAliveLocked()
+                val currentSocket = webSocket
+                webSocket = null
+                isConnected = false
+                currentSocket
+            }
+            socketToClose?.close(1000, "client_disconnect")
+        }
     }
 
     suspend fun subscribeConversation(conversationId: Int) {
-        subscribedConversationIds.add(conversationId)
+        stateMutex.withLock {
+            subscribedConversationIds.add(conversationId)
+        }
         if (!connectIfNeeded()) return
 
-        if (isConnected) {
-            webSocket?.send(
-                """
-                {"type":"subscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
-            )
+        val socketToUse = stateMutex.withLock {
+            if (!isConnected) return
+            webSocket
         }
+
+        socketToUse?.send(subscribePayload(conversationId))
     }
 
     fun unsubscribeConversation(conversationId: Int) {
-        subscribedConversationIds.remove(conversationId)
+        scope.launch {
+            val socketToUse = stateMutex.withLock {
+                subscribedConversationIds.remove(conversationId)
+                if (!isConnected) return@withLock null
+                webSocket
+            }
 
-        if (isConnected) {
-            webSocket?.send(
-                """
-                {"type":"unsubscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
-            )
+            socketToUse?.send(unsubscribePayload(conversationId))
         }
     }
 
-    fun sendPing() {
-        if (isConnected) {
-            webSocket?.send("""{"type":"ping"}""")
+    private suspend fun sendPing() {
+        val socketToUse = stateMutex.withLock {
+            if (!isConnected) return
+            webSocket
+        }
+        socketToUse?.send("""{"type":"ping"}""")
+    }
+
+    private suspend fun handleSocketOpened(openedSocket: WebSocket) {
+        stateMutex.withLock {
+            if (webSocket !== openedSocket) return
+            isConnected = true
+            startKeepAliveLocked()
         }
     }
 
-    private fun startKeepAlive() {
+    private suspend fun handleSocketClosed(closedSocket: WebSocket) {
+        stateMutex.withLock {
+            if (webSocket !== closedSocket) return
+            stopKeepAliveLocked()
+            webSocket = null
+            isConnected = false
+        }
+    }
+
+    private fun startKeepAliveLocked() {
         keepAliveJob?.cancel()
         keepAliveJob = scope.launch {
-            while (isActive && webSocket != null) {
+            while (isActive) {
                 delay(25_000)
                 sendPing()
             }
         }
     }
 
-    private fun stopKeepAlive() {
+    private fun stopKeepAliveLocked() {
         keepAliveJob?.cancel()
         keepAliveJob = null
     }
 
     private suspend fun resubscribeAll() {
-        subscribedConversationIds.forEach { conversationId ->
-            webSocket?.send(
-                """
-                {"type":"subscribe_conversation","conversation_id":$conversationId}
-                """.trimIndent()
-            )
+        val (socketToUse, conversationIds) = stateMutex.withLock {
+            webSocket to subscribedConversationIds.toList()
+        }
+        conversationIds.forEach { conversationId ->
+            socketToUse?.send(subscribePayload(conversationId))
         }
     }
 
@@ -246,6 +277,12 @@ class RealtimeWebSocketManager @Inject constructor(
             else -> error("Unsupported API_BASE_URL: $httpBase")
         }
     }
+
+    private fun subscribePayload(conversationId: Int): String =
+        """{"type":"subscribe_conversation","conversation_id":$conversationId}"""
+
+    private fun unsubscribePayload(conversationId: Int): String =
+        """{"type":"unsubscribe_conversation","conversation_id":$conversationId}"""
 }
 
 private val kotlinx.serialization.json.JsonPrimitive.intOrNull: Int?

@@ -37,7 +37,7 @@ fun VerifyEmailCodeScreen(
         title = "Подтверждение входа",
         subtitle = "Введите код из письма",
     ) {
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
             TelegramStatusCard(text = "Challenge: $challengeId")
             state.debugCode?.let {
                 TelegramStatusCard(text = "DEBUG CODE: $it")

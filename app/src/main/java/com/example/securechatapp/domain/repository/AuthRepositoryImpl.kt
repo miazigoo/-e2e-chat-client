@@ -3,7 +3,6 @@ package com.example.securechatapp.data.repository
 import android.os.Build
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
-import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.crypto.signal.SignalBootstrapKeyMaterialProvider
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
@@ -24,7 +23,6 @@ import retrofit2.HttpException
 class AuthRepositoryImpl @Inject constructor(
     private val authApi: AuthApi,
     private val sessionLocalDataSource: SecureSessionLocalDataSource,
-    private val crypto: CryptoEngine,
     private val signalBootstrapKeyMaterialProvider: SignalBootstrapKeyMaterialProvider,
     private val json: Json,
 ) : AuthRepository {

@@ -7,6 +7,26 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+fun projectPropertyOrEnv(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull
+        ?: System.getenv(name)
+        ?: fallback
+
+fun String.asBuildConfigString(): String = "\"$this\""
+
+val defaultDebugApiBaseUrl = "http://10.0.2.2:8000/api/v1/"
+val defaultReleaseApiBaseUrl = "https://api.example.com/api/v1/"
+
+val debugApiBaseUrl = projectPropertyOrEnv("SECURE_CHAT_DEBUG_API_BASE_URL", defaultDebugApiBaseUrl)
+val releaseApiBaseUrl = projectPropertyOrEnv("SECURE_CHAT_RELEASE_API_BASE_URL", defaultReleaseApiBaseUrl)
+val debugHttpLoggingEnabled = projectPropertyOrEnv("SECURE_CHAT_DEBUG_HTTP_LOGGING", "true").toBoolean()
+val releaseHttpLoggingEnabled = projectPropertyOrEnv("SECURE_CHAT_RELEASE_HTTP_LOGGING", "false").toBoolean()
+val debugSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_DEBUG_SIGNAL_PROTOCOL", "false").toBoolean()
+val releaseSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_RELEASE_SIGNAL_PROTOCOL", "false").toBoolean()
+val debugAuthHintsVisible = projectPropertyOrEnv("SECURE_CHAT_SHOW_DEBUG_AUTH_INFO", "true").toBoolean()
+
 android {
     namespace = "com.example.securechatapp"
     compileSdk = 35
@@ -20,20 +40,25 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/v1/\"")
-        buildConfigField("boolean", "ENABLE_HTTP_LOGGING", "true")
+        buildConfigField("String", "API_BASE_URL", debugApiBaseUrl.asBuildConfigString())
+        buildConfigField("boolean", "ENABLE_HTTP_LOGGING", debugHttpLoggingEnabled.toString())
         buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", "false")
+        buildConfigField("boolean", "SHOW_DEBUG_AUTH_INFO", "false")
     }
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/v1/\"")
-            buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", "false")
+            buildConfigField("String", "API_BASE_URL", debugApiBaseUrl.asBuildConfigString())
+            buildConfigField("boolean", "ENABLE_HTTP_LOGGING", debugHttpLoggingEnabled.toString())
+            buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", debugSignalProtocolEnabled.toString())
+            buildConfigField("boolean", "SHOW_DEBUG_AUTH_INFO", debugAuthHintsVisible.toString())
             isMinifyEnabled = false
         }
         release {
-            buildConfigField("String", "API_BASE_URL", "\"https://your-domain.com/api/v1/\"")
-            buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", "false")
+            buildConfigField("String", "API_BASE_URL", releaseApiBaseUrl.asBuildConfigString())
+            buildConfigField("boolean", "ENABLE_HTTP_LOGGING", releaseHttpLoggingEnabled.toString())
+            buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", releaseSignalProtocolEnabled.toString())
+            buildConfigField("boolean", "SHOW_DEBUG_AUTH_INFO", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -53,14 +78,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -104,6 +131,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
@@ -112,6 +141,15 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.whispersystems:signal-protocol-android:2.8.1")
+}
+
+tasks.configureEach {
+    if (name.contains("Release", ignoreCase = false)) {
+        doFirst {
+            check(releaseApiBaseUrl != defaultReleaseApiBaseUrl) {
+                "SECURE_CHAT_RELEASE_API_BASE_URL must be configured for release builds."
+            }
+        }
+    }
 }

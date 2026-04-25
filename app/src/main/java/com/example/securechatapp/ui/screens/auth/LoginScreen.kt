@@ -91,7 +91,7 @@ fun LoginScreen(
             TelegramStatusCard(text = "Код отправлен на $it")
         }
 
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
             state.debugCode?.let {
                 TelegramStatusCard(text = "DEBUG CODE: $it")
             }

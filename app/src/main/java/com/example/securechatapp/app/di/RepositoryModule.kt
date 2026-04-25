@@ -1,6 +1,5 @@
 package com.example.securechatapp.app.di
 
-import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.crypto.signal.LibSignalMessageCryptoEngine
 import com.example.securechatapp.crypto.signal.RealSignalBootstrapKeyMaterialProvider
 import com.example.securechatapp.crypto.signal.RealSignalPreKeyMaterialProvider
@@ -30,13 +29,11 @@ object RepositoryModule {
     fun provideAuthRepository(
         authApi: AuthApi,
         sessionLocalDataSource: SecureSessionLocalDataSource,
-        crypto: CryptoEngine,
         signalBootstrapKeyMaterialProvider: SignalBootstrapKeyMaterialProvider,
         json: Json,
     ): AuthRepository = AuthRepositoryImpl(
         authApi = authApi,
         sessionLocalDataSource = sessionLocalDataSource,
-        crypto = crypto,
         signalBootstrapKeyMaterialProvider = signalBootstrapKeyMaterialProvider,
         json = json,
     )
