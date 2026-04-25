@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.ui.theme.ThemePalette
+import com.example.securechatapp.ui.theme.themePaletteBundle
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -271,10 +274,10 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ThemePalette.entries.forEach { palette ->
-                        FilterChip(
+                        PalettePreviewCard(
+                            palette = palette,
                             selected = state.colorScheme == palette,
                             onClick = { viewModel.setColorScheme(palette) },
-                            label = { Text(palette.displayName) },
                         )
                     }
                 }
@@ -598,6 +601,84 @@ private fun ToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
         )
+    }
+}
+
+@Composable
+private fun PalettePreviewCard(
+    palette: ThemePalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val bundle = themePaletteBundle(palette)
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.width(156.dp),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = if (selected) 3.dp else 1.dp,
+        shadowElevation = if (selected) 6.dp else 2.dp,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(bundle.background),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(bundle.primary),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .size(width = 56.dp, height = 18.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(bundle.incomingBubble),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(width = 64.dp, height = 18.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(bundle.outgoingBubble),
+                )
+            }
+
+            Text(
+                text = palette.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = if (selected) "Активна" else "Нажмите, чтобы применить",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
     }
 }
 

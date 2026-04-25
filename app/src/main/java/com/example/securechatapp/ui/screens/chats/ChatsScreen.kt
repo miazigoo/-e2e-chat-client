@@ -1,7 +1,15 @@
 package com.example.securechatapp.ui.screens.chats
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,10 +43,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.ui.components.BrandMark
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
+import com.example.securechatapp.ui.components.BrandedEmptyState
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -139,7 +150,10 @@ fun ChatsScreen(
                     SectionTitle("Результаты поиска")
 
                     if (!state.isLoading && state.users.isEmpty()) {
-                        EmptyHint("Никого не найдено")
+                        EmptyHint(
+                            title = "Никого не найдено",
+                            subtitle = "Попробуйте другой никнейм или уточните запрос",
+                        )
                     }
 
                     LazyColumn(
@@ -164,11 +178,17 @@ fun ChatsScreen(
                 SectionTitle("Чаты")
 
                 if (state.isLoading && state.conversations.isEmpty()) {
-                    EmptyHint("Загрузка...")
+                    EmptyHint(
+                        title = "Загружаем чаты",
+                        subtitle = "Синхронизируем последние диалоги и статусы",
+                    )
                 }
 
                 if (!state.isLoading && state.conversations.isEmpty()) {
-                    EmptyHint("Чатов пока нет")
+                    EmptyHint(
+                        title = "Чатов пока нет",
+                        subtitle = "Найдите пользователя выше и начните первый защищённый диалог",
+                    )
                 }
 
                 LazyColumn(
@@ -211,19 +231,7 @@ private fun ChatsTopBar(
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "✈",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
+            BrandMark(size = 44.dp)
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -260,10 +268,26 @@ private fun SearchUserItem(
     user: UserSearchItem,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.985f else 1f,
+        animationSpec = spring(stiffness = 700f, dampingRatio = 0.75f),
+        label = "search_user_scale",
+    )
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
@@ -305,11 +329,27 @@ private fun ChatListItem(
         !item.isActive -> "Недоступен"
         else -> null
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.988f else 1f,
+        animationSpec = spring(stiffness = 700f, dampingRatio = 0.75f),
+        label = "chat_item_scale",
+    )
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .animateContentSize()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
@@ -434,13 +474,34 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun EmptyHint(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(vertical = 12.dp),
-    )
+private fun EmptyHint(
+    title: String,
+    subtitle: String,
+) {
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn() + scaleIn(initialScale = 0.97f),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+            shadowElevation = 2.dp,
+        ) {
+            Box(
+                modifier = Modifier.padding(vertical = 20.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                BrandedEmptyState(
+                    title = title,
+                    subtitle = subtitle,
+                )
+            }
+        }
+    }
 }
 
 @Composable

@@ -1,8 +1,12 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -18,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.ui.components.BrandedEmptyState
 import com.example.securechatapp.ui.theme.SecureChatTheme
 
 @Composable
@@ -132,16 +137,24 @@ fun EmptyConversationHint(text: String) {
             .padding(vertical = 18.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+        AnimatedVisibility(
+            visible = true,
+            enter = fadeIn() + scaleIn(initialScale = 0.96f),
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            )
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                tonalElevation = 2.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 26.dp, vertical = 22.dp),
+                ) {
+                    BrandedEmptyState(
+                        title = text,
+                        subtitle = "Когда появятся сообщения, диалог оживёт здесь",
+                    )
+                }
+            }
         }
     }
 }

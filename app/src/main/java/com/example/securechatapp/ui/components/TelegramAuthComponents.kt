@@ -19,7 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -40,37 +39,12 @@ fun TelegramAuthScaffold(
                 .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Surface(
-                modifier = Modifier.size(84.dp),
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.primary,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Surface(
-                        modifier = Modifier.size(46.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
-                    ) {}
-
-                    Text(
-                        text = "SC",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
+            BrandMark(size = 84.dp)
 
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 20.dp),
             )
 
