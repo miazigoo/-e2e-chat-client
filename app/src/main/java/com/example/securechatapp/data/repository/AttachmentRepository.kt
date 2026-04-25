@@ -3,6 +3,7 @@ package com.example.securechatapp.data.repository
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.domain.model.AttachmentDownloadInfo
 import com.example.securechatapp.domain.model.AttachmentItem
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -29,7 +30,10 @@ class AttachmentRepository @Inject constructor(
                         ),
                     mimeType = item.mimeHint,
                     fileSize = item.fileSize,
-                    canDownload = item.deletedAt == null,
+                    canDownload = isAttachmentDownloadable(
+                        uploadStatus = item.uploadStatus,
+                        deletedAt = item.deletedAt,
+                    ),
                 )
             }
     }
@@ -66,6 +70,21 @@ class AttachmentRepository @Inject constructor(
             mimeType?.startsWith("video/") == true -> "video_$attachmentId"
             mimeType?.startsWith("audio/") == true -> "audio_$attachmentId"
             else -> "attachment_$attachmentId"
+        }
+    }
+
+    private fun isAttachmentDownloadable(
+        uploadStatus: String,
+        deletedAt: String?,
+    ): Boolean {
+        if (deletedAt != null) return false
+
+        return when (uploadStatus.lowercase(Locale.ROOT)) {
+            "uploaded",
+            "linked",
+                -> true
+
+            else -> false
         }
     }
 }
