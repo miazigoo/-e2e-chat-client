@@ -1,22 +1,34 @@
 package com.example.securechatapp.ui.screens.settings
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -29,11 +41,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
@@ -50,6 +67,14 @@ fun SettingsScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showLogoutAllConfirm by remember { mutableStateOf(false) }
     var showRevokeConfirm by remember { mutableStateOf(false) }
+
+    val avatarPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadAvatar(uri)
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -92,10 +117,201 @@ fun SettingsScreen(
                 )
             }
 
-            SectionCard(title = "Профиль и сессия") {
-                SettingRow("Никнейм", state.nickname)
+            SectionCard(title = "Профиль") {
+                ProfileHeader(
+                    avatarUrl = state.avatarUrl,
+                    nickname = state.nickname,
+                    fullName = state.fullName,
+                    publicId = state.publicId,
+                    avatarUpdatedAt = state.avatarUpdatedAt,
+                    isUploading = state.isUploadingAvatar,
+                    onUpload = { avatarPicker.launch("image/*") },
+                    onDelete = viewModel::deleteAvatar,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider()
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = state.nickname,
+                    onValueChange = viewModel::updateNickname,
+                    label = { Text("Никнейм") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                    ),
+                )
+
+                OutlinedTextField(
+                    value = state.fullName,
+                    onValueChange = viewModel::updateFullName,
+                    label = { Text("Отображаемое имя") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = state.bio,
+                    onValueChange = viewModel::updateBio,
+                    label = { Text("О себе") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 5,
+                )
+
+                OutlinedTextField(
+                    value = state.languageCode,
+                    onValueChange = viewModel::updateLanguageCode,
+                    label = { Text("Язык профиля") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        capitalization = KeyboardCapitalization.None,
+                    ),
+                )
+
+                Text(
+                    text = "Тема профиля на сервере",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("system", "light", "dark").forEach { theme ->
+                        FilterChip(
+                            selected = state.profileTheme == theme,
+                            onClick = { viewModel.updateProfileTheme(theme) },
+                            label = { Text(theme) },
+                        )
+                    }
+                }
+
+                ToggleRow(
+                    title = "Push-уведомления",
+                    subtitle = "Главный серверный переключатель уведомлений",
+                    checked = state.pushNotificationsEnabled,
+                    onCheckedChange = viewModel::setPushNotificationsEnabled,
+                )
+
+                ToggleRow(
+                    title = "Уведомления об обновлениях",
+                    subtitle = "Сервер может присылать push о новых APK",
+                    checked = state.apkUpdateNotificationsEnabled,
+                    onCheckedChange = viewModel::setApkUpdateNotificationsEnabled,
+                )
+
+                Button(
+                    onClick = viewModel::saveProfile,
+                    enabled = !state.isSavingProfile && !state.isLoadingProfile,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        if (state.isSavingProfile) {
+                            "Сохраняем профиль..."
+                        } else {
+                            "Сохранить профиль"
+                        }
+                    )
+                }
+            }
+
+            SectionCard(title = "Локальная тема") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Тёмная тема",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Этот переключатель меняет текущий UI клиента локально",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    Switch(
+                        checked = state.darkThemeEnabled,
+                        onCheckedChange = viewModel::setDarkThemeEnabled,
+                    )
+                }
+            }
+
+            SectionCard(title = "Обновления приложения") {
+                SettingRow("Текущая версия", "${state.currentVersionName} (${state.currentVersionCode})")
+                HorizontalDivider()
+                SettingRow("Статус", state.updateStatus)
+
+                state.latestVersionName?.let { versionName ->
+                    HorizontalDivider()
+                    SettingRow(
+                        "Последний релиз",
+                        "$versionName (${state.latestVersionCode ?: "—"})",
+                    )
+                }
+
+                state.latestVersionChangelog?.takeIf { it.isNotBlank() }?.let { changelog ->
+                    HorizontalDivider()
+                    SettingRow("Changelog", changelog)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Button(
+                    onClick = viewModel::checkForAppUpdates,
+                    enabled = !state.isCheckingForUpdates,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        if (state.isCheckingForUpdates) {
+                            "Проверяем..."
+                        } else {
+                            "Проверить обновления"
+                        }
+                    )
+                }
+
+                state.updateDownloadUrl?.let { url ->
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                data = android.net.Uri.parse(url)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text("Открыть ссылку на APK")
+                    }
+                }
+            }
+
+            SectionCard(title = "Профиль и сессия") {
                 SettingRow("User ID", state.userId)
+                HorizontalDivider()
+                SettingRowWithAction(
+                    label = "Public ID",
+                    value = state.publicId,
+                    actionText = "Скопировать",
+                    onActionClick = {
+                        clipboardManager.setText(AnnotatedString(state.publicId))
+                        Toast.makeText(context, "Public ID скопирован", Toast.LENGTH_SHORT).show()
+                    },
+                    mono = true,
+                )
                 HorizontalDivider()
                 SettingRow("Статус сессии", state.sessionStatus)
                 HorizontalDivider()
@@ -113,35 +329,10 @@ fun SettingsScreen(
                 )
             }
 
-            SectionCard(title = "Тема") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Тёмная тема",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Сохраняется локально",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    Switch(
-                        checked = state.darkThemeEnabled,
-                        onCheckedChange = viewModel::setDarkThemeEnabled,
-                    )
-                }
-            }
-
             SectionCard(title = "Сеть и heartbeat") {
                 SettingRow("Последний heartbeat", state.lastHeartbeatAt)
 
-                Spacer(modifier = Modifier.padding(top = 4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
                     onClick = viewModel::sendHeartbeatNow,
@@ -167,11 +358,7 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Text(
-                        if (state.isLoggingOut) {
-                            "Выходим..."
-                        } else {
-                            "Выйти из текущей сессии"
-                        }
+                        if (state.isLoggingOut) "Выходим..." else "Выйти из текущей сессии"
                     )
                 }
 
@@ -182,11 +369,7 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Text(
-                        if (state.isLoggingOutAll) {
-                            "Завершаем..."
-                        } else {
-                            "Выйти из всех сессий"
-                        }
+                        if (state.isLoggingOutAll) "Завершаем..." else "Выйти из всех сессий"
                     )
                 }
 
@@ -211,104 +394,214 @@ fun SettingsScreen(
             }
 
             SectionCard(title = "О приложении") {
-                SettingRow("Версия", BuildConfig.VERSION_NAME)
+                SettingRow("Версия клиента", BuildConfig.VERSION_NAME)
                 HorizontalDivider()
                 SettingRow("API", BuildConfig.API_BASE_URL, mono = true)
                 HorizontalDivider()
-                SettingRow(
-                    "Среда",
-                    if (BuildConfig.DEBUG) "debug" else "release",
-                )
+                SettingRow("Среда", if (BuildConfig.DEBUG) "debug" else "release")
             }
         }
     }
 
     if (showLogoutConfirm) {
-        AlertDialog(
-            onDismissRequest = { showLogoutConfirm = false },
-            title = { Text("Выйти из текущей сессии?") },
-            text = {
-                Text("Текущая сессия будет завершена, но устройство останется зарегистрированным.")
+        ConfirmDialog(
+            title = "Выйти из текущей сессии?",
+            text = "Текущая сессия будет завершена, но устройство останется зарегистрированным.",
+            confirmLabel = "Выйти",
+            onDismiss = { showLogoutConfirm = false },
+            onConfirm = {
+                showLogoutConfirm = false
+                viewModel.logoutSession(onLoggedOut)
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutConfirm = false
-                        viewModel.logoutSession(onLoggedOut)
-                    }
-                ) {
-                    Text("Выйти")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showLogoutConfirm = false }
-                ) {
-                    Text("Отмена")
-                }
-            }
         )
     }
 
     if (showLogoutAllConfirm) {
-        AlertDialog(
-            onDismissRequest = { showLogoutAllConfirm = false },
-            title = { Text("Выйти из всех сессий?") },
-            text = {
-                Text("Все активные сессии аккаунта будут завершены. Для продолжения потребуется снова войти в приложение.")
+        ConfirmDialog(
+            title = "Выйти из всех сессий?",
+            text = "Все активные сессии аккаунта будут завершены. Для продолжения потребуется снова войти в приложение.",
+            confirmLabel = "Выйти везде",
+            onDismiss = { showLogoutAllConfirm = false },
+            onConfirm = {
+                showLogoutAllConfirm = false
+                viewModel.logoutAllSessions(onLoggedOut)
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutAllConfirm = false
-                        viewModel.logoutAllSessions(onLoggedOut)
-                    }
-                ) {
-                    Text("Выйти везде")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showLogoutAllConfirm = false }
-                ) {
-                    Text("Отмена")
-                }
-            }
         )
     }
 
     if (showRevokeConfirm) {
-        AlertDialog(
-            onDismissRequest = { showRevokeConfirm = false },
-            title = { Text("Отозвать текущее устройство?") },
-            text = {
-                Text(
-                    "Устройство станет неактивным. Для повторного использования потребуется новая авторизация и повторная регистрация устройства."
-                )
+        ConfirmDialog(
+            title = "Отозвать текущее устройство?",
+            text = "Устройство станет неактивным. Для повторного использования потребуется новая авторизация и повторная регистрация устройства.",
+            confirmLabel = "Отозвать",
+            destructive = true,
+            onDismiss = { showRevokeConfirm = false },
+            onConfirm = {
+                showRevokeConfirm = false
+                viewModel.revokeCurrentDevice(onLoggedOut)
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showRevokeConfirm = false
-                        viewModel.revokeCurrentDevice(onLoggedOut)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Text("Отозвать")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showRevokeConfirm = false }
-                ) {
-                    Text("Отмена")
-                }
-            }
         )
     }
+}
+
+@Composable
+private fun ProfileHeader(
+    avatarUrl: String?,
+    nickname: String,
+    fullName: String,
+    publicId: String,
+    avatarUpdatedAt: String,
+    isUploading: Boolean,
+    onUpload: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        if (avatarUrl != null) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = "Avatar",
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = nickname.take(1).uppercase(),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = fullName.ifBlank { nickname },
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = publicId,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Аватар обновлён: $avatarUpdatedAt",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(
+            onClick = onUpload,
+            enabled = !isUploading,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Text(if (isUploading) "Загружаем..." else "Загрузить аватар")
+        }
+
+        Button(
+            onClick = onDelete,
+            enabled = !isUploading && avatarUrl != null,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Text("Удалить")
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+    }
+}
+
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    text: String,
+    confirmLabel: String,
+    destructive: Boolean = false,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = if (destructive) {
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    ButtonDefaults.buttonColors()
+                },
+            ) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 @Composable
@@ -318,23 +611,63 @@ private fun SectionCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+        tonalElevation = 2.dp,
+        shadowElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                content()
+            }
+        )
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    value: String,
+    isError: Boolean = false,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isError) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (isError) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                },
             )
-            content()
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isError) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                },
+            )
         }
     }
 }
@@ -347,23 +680,21 @@ private fun SettingRow(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
             style = if (mono) {
-                MaterialTheme.typography.bodyMedium
+                MaterialTheme.typography.bodySmall
             } else {
-                MaterialTheme.typography.titleMedium
+                MaterialTheme.typography.bodyLarge
             },
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -376,74 +707,32 @@ private fun SettingRowWithAction(
     onActionClick: () -> Unit,
     mono: Boolean = false,
 ) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Text(
-            text = value,
-            style = if (mono) {
-                MaterialTheme.typography.bodyMedium
-            } else {
-                MaterialTheme.typography.titleMedium
-            },
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        TextButton(
-            onClick = onActionClick,
-            modifier = Modifier.align(Alignment.Start),
-        ) {
-            Text(actionText)
-        }
-    }
-}
-
-@Composable
-private fun InfoCard(
-    title: String,
-    value: String,
-    isError: Boolean = false,
-) {
-    val bg = if (isError) {
-        MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-    } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-    }
-
-    val fg = if (isError) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = bg,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
-                color = fg,
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = fg,
+                style = if (mono) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+
+        Text(
+            text = actionText,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onActionClick).padding(8.dp),
+        )
     }
 }

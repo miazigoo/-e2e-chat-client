@@ -43,15 +43,23 @@ import com.example.securechatapp.data.remote.dto.VerifyEmailCodeRequestDto
 import com.example.securechatapp.data.remote.dto.VerifyEmailCodeResponseDto
 import com.example.securechatapp.data.remote.dto.GetAttachmentResponseDto
 import com.example.securechatapp.data.remote.dto.ListMessageAttachmentsResponseDto
+import com.example.securechatapp.data.remote.dto.UpdateUserProfileRequestDto
+import com.example.securechatapp.data.remote.dto.UserProfileResponseDto
+import com.example.securechatapp.data.remote.dto.UserPublicProfileResponseDto
+import com.example.securechatapp.data.remote.dto.AppVersionCheckResponseDto
+import com.example.securechatapp.data.remote.dto.LatestAppReleaseResponseDto
 import com.example.securechatapp.data.remote.dto.LogoutAllResponseDto
 import com.example.securechatapp.data.remote.dto.LogoutResponseDto
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Part
 import retrofit2.http.Query
 
 interface ChatBackendApi {
@@ -86,6 +94,28 @@ interface ChatBackendApi {
         @Query("q") query: String,
         @Query("limit") limit: Int = 20,
     ): ApiEnvelopeDto<UserSearchResponseDto>
+
+    @GET("users/me")
+    suspend fun getMyProfile(): ApiEnvelopeDto<UserProfileResponseDto>
+
+    @PATCH("users/me")
+    suspend fun updateMyProfile(
+        @Body body: UpdateUserProfileRequestDto,
+    ): ApiEnvelopeDto<UserProfileResponseDto>
+
+    @Multipart
+    @POST("users/me/avatar")
+    suspend fun uploadMyAvatar(
+        @Part file: MultipartBody.Part,
+    ): ApiEnvelopeDto<UserProfileResponseDto>
+
+    @DELETE("users/me/avatar")
+    suspend fun deleteMyAvatar(): ApiEnvelopeDto<UserProfileResponseDto>
+
+    @GET("users/{userId}/profile")
+    suspend fun getUserProfile(
+        @Path("userId") userId: Int,
+    ): ApiEnvelopeDto<UserPublicProfileResponseDto>
 
     @GET("conversations")
     suspend fun listConversations(): ApiEnvelopeDto<ListConversationsResponseDto>
@@ -188,6 +218,14 @@ suspend fun updateConversationSettings(
     suspend fun getAttachmentMetadata(
         @Path("attachmentId") attachmentId: Int,
     ): ApiEnvelopeDto<GetAttachmentResponseDto>
+
+    @GET("files/apk/latest")
+    suspend fun getLatestApkRelease(): ApiEnvelopeDto<LatestAppReleaseResponseDto>
+
+    @GET("files/apk/check")
+    suspend fun checkApkVersion(
+        @Query("version_code") versionCode: Int,
+    ): ApiEnvelopeDto<AppVersionCheckResponseDto>
 
     @POST("auth/logout")
     suspend fun logoutSession(): ApiEnvelopeDto<LogoutResponseDto>

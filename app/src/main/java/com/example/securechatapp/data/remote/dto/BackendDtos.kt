@@ -184,6 +184,122 @@ data class UserSearchResponseDto(
 )
 
 @Serializable
+data class UserProfileSettingsDto(
+    @SerialName("language_code")
+    val languageCode: String,
+    val theme: String,
+    @SerialName("push_notifications_enabled")
+    val pushNotificationsEnabled: Boolean,
+    @SerialName("apk_update_notifications_enabled")
+    val apkUpdateNotificationsEnabled: Boolean,
+)
+
+@Serializable
+data class UserPublicProfileResponseDto(
+    @SerialName("user_id")
+    val userId: Int,
+    @SerialName("public_id")
+    val publicId: String,
+    val nickname: String,
+    @SerialName("full_name")
+    val fullName: String? = null,
+    val bio: String? = null,
+    @SerialName("avatar_url")
+    val avatarUrl: String? = null,
+    @SerialName("avatar_updated_at")
+    val avatarUpdatedAt: String? = null,
+    @SerialName("created_at")
+    val createdAt: String,
+)
+
+@Serializable
+data class UserProfileResponseDto(
+    @SerialName("user_id")
+    val userId: Int,
+    @SerialName("public_id")
+    val publicId: String,
+    val nickname: String,
+    @SerialName("full_name")
+    val fullName: String? = null,
+    val bio: String? = null,
+    @SerialName("avatar_url")
+    val avatarUrl: String? = null,
+    @SerialName("avatar_updated_at")
+    val avatarUpdatedAt: String? = null,
+    @SerialName("created_at")
+    val createdAt: String,
+    val settings: UserProfileSettingsDto,
+)
+
+@Serializable
+data class UpdateUserProfileRequestDto(
+    val nickname: String? = null,
+    @SerialName("full_name")
+    val fullName: String? = null,
+    val bio: String? = null,
+    @SerialName("language_code")
+    val languageCode: String? = null,
+    val theme: String? = null,
+    @SerialName("push_notifications_enabled")
+    val pushNotificationsEnabled: Boolean? = null,
+    @SerialName("apk_update_notifications_enabled")
+    val apkUpdateNotificationsEnabled: Boolean? = null,
+)
+
+@Serializable
+data class AppReleaseDetailsDto(
+    val platform: String,
+    @SerialName("version_name")
+    val versionName: String,
+    @SerialName("version_code")
+    val versionCode: Int,
+    @SerialName("file_name")
+    val fileName: String,
+    @SerialName("file_size")
+    val fileSize: Long,
+    val sha256: String,
+    val changelog: String? = null,
+    @SerialName("content_type")
+    val contentType: String,
+    @SerialName("uploaded_at")
+    val uploadedAt: String,
+)
+
+@Serializable
+data class LatestAppReleaseResponseDto(
+    val platform: String,
+    @SerialName("version_name")
+    val versionName: String,
+    @SerialName("version_code")
+    val versionCode: Int,
+    @SerialName("file_name")
+    val fileName: String,
+    @SerialName("file_size")
+    val fileSize: Long,
+    val sha256: String,
+    val changelog: String? = null,
+    @SerialName("content_type")
+    val contentType: String,
+    @SerialName("uploaded_at")
+    val uploadedAt: String,
+    @SerialName("download_url")
+    val downloadUrl: String,
+    @SerialName("download_url_expires_in")
+    val downloadUrlExpiresIn: Int,
+)
+
+@Serializable
+data class AppVersionCheckResponseDto(
+    @SerialName("current_version_code")
+    val currentVersionCode: Int,
+    @SerialName("latest_version_code")
+    val latestVersionCode: Int,
+    @SerialName("update_available")
+    val updateAvailable: Boolean,
+    val release: LatestAppReleaseResponseDto,
+)
+
+@Serializable
 data class CreateConversationRequestDto(
     @SerialName("recipient_user_id")
     val recipientUserId: Int,
