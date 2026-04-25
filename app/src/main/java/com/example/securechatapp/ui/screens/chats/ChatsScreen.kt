@@ -128,8 +128,9 @@ fun ChatsScreen(
 
                 state.updateRelease?.let { release ->
                     Spacer(modifier = Modifier.height(10.dp))
-                    InfoBanner(
+                    DismissibleInfoBanner(
                         text = "Доступно обновление ${release.versionName} (${release.versionCode})",
+                        onDismiss = viewModel::dismissUpdateBanner,
                     )
                 }
 
@@ -361,11 +362,7 @@ private fun ChatListItem(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = if (item.pinnedMessage != null) {
-                        "📌 ${item.lastMessagePreview}"
-                    } else {
-                        item.lastMessagePreview
-                    },
+                    text = if (item.pinnedMessage != null) "📌 ${item.lastMessagePreview}" else item.lastMessagePreview,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -473,6 +470,35 @@ private fun InfoBanner(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
         )
+    }
+}
+
+@Composable
+private fun DismissibleInfoBanner(
+    text: String,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onDismiss) {
+                Text("Скрыть")
+            }
+        }
     }
 }
 

@@ -77,8 +77,8 @@ class MessageRepository @Inject constructor(
                     },
                     replyToMessageId = dto.replyToMessageId,
                     forwardFromMessageId = dto.forwardFromMessageId,
-                    replyPreview = dto.replyPreview?.toDomain(conversationUuid, ::decodeEncryptedMessagePayload),
-                    forwardPreview = dto.forwardPreview?.toDomain(conversationUuid, ::decodeEncryptedMessagePayload),
+                    replyPreview = dto.replyPreview?.toDomain(),
+                    forwardPreview = dto.forwardPreview?.toDomain(),
                 )
             }
     }
@@ -467,23 +467,19 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
         },
         replyToMessageId = replyToMessageId,
         forwardFromMessageId = forwardFromMessageId,
-        replyPreview = replyPreview?.toDomain(conversationUuid, decoder),
-        forwardPreview = forwardPreview?.toDomain(conversationUuid, decoder),
+        replyPreview = replyPreview?.toDomain(),
+        forwardPreview = forwardPreview?.toDomain(),
     )
 }
 
-private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(
-    conversationUuid: String,
-    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
-): MessagePreview {
-    val decoded = decoder(conversationUuid, ciphertext, "signal")
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(): MessagePreview {
     return MessagePreview(
         messageId = messageId,
         messageUuid = messageUuid,
         senderUserId = senderUserId,
         messageType = messageType,
-        text = decoded.text,
-        hasAttachments = hasAttachments || decoded.attachments.isNotEmpty(),
+        text = "",
+        hasAttachments = hasAttachments,
         clientCreatedAt = clientCreatedAt,
     )
 }

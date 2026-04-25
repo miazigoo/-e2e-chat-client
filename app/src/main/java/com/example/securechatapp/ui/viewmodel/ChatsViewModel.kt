@@ -74,20 +74,30 @@ class ChatsViewModel @Inject constructor(
     }
 
     fun searchUsers(query: String) {
-        if (query.isBlank()) {
+        val normalizedQuery = query.trim()
+        if (normalizedQuery.isBlank()) {
             _state.value = _state.value.copy(users = emptyList())
             return
         }
 
         viewModelScope.launch {
             runCatching {
-                val users = conversationRepository.searchUsers(query)
                 _state.value = _state.value.copy(
+                    isLoading = true,
+                    error = null,
+                )
+
+                val users = conversationRepository.searchUsers(normalizedQuery)
+                _state.value = _state.value.copy(
+                    isLoading = false,
                     users = users,
                     error = null,
                 )
             }.onFailure {
-                _state.value = _state.value.copy(error = it.message)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = it.message,
+                )
             }
         }
     }
@@ -102,6 +112,17 @@ class ChatsViewModel @Inject constructor(
                     isLoading = true,
                     error = null,
                 )
+
+                val safety = conversationRepository.getUserSafety(userId)
+                if (!safety.canStartConversation) {
+                    val message = when {
+                        safety.pendingDeletion -> "Пользователь запланировал удаление аккаунта"
+                        !safety.hasActiveDevice -> "У пользователя нет активного устройства"
+                        !safety.supportsEncryptedChat -> "Пользователь пока не готов к защищенному чату"
+                        else -> "Нельзя начать чат с этим пользователем"
+                    }
+                    error(message)
+                }
 
                 val conversationId = conversationRepository.createConversation(userId)
                 val items = conversationRepository.listConversations()
@@ -145,7 +166,10 @@ class ChatsViewModel @Inject constructor(
     }
 
     fun dismissUpdateBanner() {
-        _state.value = _state.value.copy(updateRelease = null)
+        _state.value = _state.value.copy(
+            updateRelease = null,
+            info = null,
+        )
     }
 
     private fun connectRealtime() {

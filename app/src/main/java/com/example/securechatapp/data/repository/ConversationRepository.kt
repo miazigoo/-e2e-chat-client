@@ -150,11 +150,6 @@ class ConversationRepository @Inject constructor(
     }
 
     private fun buildConversationPreview(item: ConversationListItemDto): String {
-        item.pinnedMessage?.let { pinned ->
-            val prefix = if (item.isSavedMessages) "Закреп" else "📌"
-            return "$prefix ${buildPreviewText(pinned.textFromCiphertext(), pinned.hasAttachments, pinned.messageType)}"
-        }
-
         val last = item.lastMessage ?: return "Нет сообщений"
         val isMine = last.senderUserId != item.peer.userId
 
@@ -189,15 +184,8 @@ private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain
         messageUuid = messageUuid,
         senderUserId = senderUserId,
         messageType = messageType,
-        text = textFromCiphertext(),
+        text = "",
         hasAttachments = hasAttachments,
         clientCreatedAt = clientCreatedAt,
     )
-}
-
-private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.textFromCiphertext(): String {
-    return ciphertext
-        .takeUnless { it.startsWith("ss1:") }
-        ?.takeIf { it.startsWith("{") }
-        ?: ""
 }
