@@ -1,5 +1,9 @@
 package com.example.securechatapp.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,7 +28,12 @@ import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
 @Composable
-fun SecureChatNavHost() {
+fun SecureChatNavHost(
+    openConversationId: Int? = null,
+    openRoute: String? = null,
+    onConversationHandled: () -> Unit = {},
+    onRouteHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.uiState.collectAsState()
@@ -48,9 +57,54 @@ fun SecureChatNavHost() {
         }
     }
 
+    LaunchedEffect(authState.isAuthorized, openRoute, openConversationId) {
+        if (!authState.isAuthorized) return@LaunchedEffect
+
+        when {
+            openConversationId != null -> {
+                navController.navigate(Routes.conversationRoute(openConversationId)) {
+                    popUpTo(Routes.Chats)
+                    launchSingleTop = true
+                }
+                onConversationHandled()
+            }
+
+            !openRoute.isNullOrBlank() -> {
+                navController.navigate(openRoute) {
+                    launchSingleTop = true
+                }
+                onRouteHandled()
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.Splash,
+        enterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(320),
+            ) + fadeIn(animationSpec = tween(220))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(260),
+            ) + fadeOut(animationSpec = tween(180))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(300),
+            ) + fadeIn(animationSpec = tween(200))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(240),
+            ) + fadeOut(animationSpec = tween(160))
+        },
     ) {
         composable(Routes.Splash) {
             SplashScreen(

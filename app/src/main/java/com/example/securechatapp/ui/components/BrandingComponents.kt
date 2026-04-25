@@ -7,9 +7,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -106,6 +109,61 @@ fun BrandedEmptyState(
             text = subtitle,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun BrandedSkeletonBlock(
+    modifier: Modifier = Modifier,
+    height: Dp,
+    cornerRadius: Dp = 18.dp,
+) {
+    val shimmer = rememberInfiniteTransition(label = "skeleton").animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeleton_alpha",
+    ).value
+
+    Box(
+        modifier = modifier
+            .height(height)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f * shimmer),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f * shimmer),
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.84f * shimmer),
+                    )
+                ),
+                shape = RoundedCornerShape(cornerRadius),
+            )
+    )
+}
+
+@Composable
+fun BrandedSkeletonLines(
+    modifier: Modifier = Modifier,
+    primaryWidthFraction: Float = 1f,
+    secondaryWidthFraction: Float = 0.62f,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BrandedSkeletonBlock(
+            modifier = Modifier.fillMaxWidth(primaryWidthFraction),
+            height = 18.dp,
+            cornerRadius = 10.dp,
+        )
+        BrandedSkeletonBlock(
+            modifier = Modifier.fillMaxWidth(secondaryWidthFraction),
+            height = 12.dp,
+            cornerRadius = 10.dp,
         )
     }
 }

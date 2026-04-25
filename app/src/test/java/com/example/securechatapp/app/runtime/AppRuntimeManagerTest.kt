@@ -6,6 +6,7 @@ import com.example.securechatapp.data.local.preferences.SessionState
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.SessionRepository
+import com.example.securechatapp.push.PushRegistrationManager
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -18,6 +19,7 @@ class AppRuntimeManagerTest {
     private val sessionRepository = mockk<SessionRepository>(relaxed = true)
     private val realtimeWebSocketManager = mockk<RealtimeWebSocketManager>(relaxed = true)
     private val outboxDispatcher = mockk<OutboxDispatcher>(relaxed = true)
+    private val pushRegistrationManager = mockk<PushRegistrationManager>(relaxed = true)
     private val lifecycleOwner = mockk<LifecycleOwner>()
 
     private val runtimeManager = AppRuntimeManager(
@@ -25,6 +27,7 @@ class AppRuntimeManagerTest {
         sessionRepository = sessionRepository,
         realtimeWebSocketManager = realtimeWebSocketManager,
         outboxDispatcher = outboxDispatcher,
+        pushRegistrationManager = pushRegistrationManager,
     )
 
     @Test
@@ -39,6 +42,7 @@ class AppRuntimeManagerTest {
 
         runtimeManager.onStart(lifecycleOwner)
 
+        coVerify(timeout = 1_500, atLeast = 1) { pushRegistrationManager.syncCurrentToken() }
         coVerify(timeout = 1_500, atLeast = 1) { realtimeWebSocketManager.connectIfNeeded() }
         coVerify(timeout = 1_500, atLeast = 1) { outboxDispatcher.recoverStuckMessages() }
         coVerify(timeout = 1_500, atLeast = 1) { outboxDispatcher.drainAll() }
@@ -59,6 +63,7 @@ class AppRuntimeManagerTest {
         Thread.sleep(250)
 
         verify(atLeast = 1) { realtimeWebSocketManager.disconnect() }
+        coVerify(atLeast = 1) { pushRegistrationManager.clearTokenIfUnavailable() }
         coVerify(exactly = 0) { realtimeWebSocketManager.connectIfNeeded() }
         coVerify(exactly = 0) { outboxDispatcher.recoverStuckMessages() }
         coVerify(exactly = 0) { sessionRepository.heartbeat() }
@@ -77,5 +82,6 @@ class AppRuntimeManagerTest {
         runtimeManager.onStop(lifecycleOwner)
 
         verify(timeout = 1_500, atLeast = 1) { realtimeWebSocketManager.disconnect() }
+        coVerify(exactly = 0) { pushRegistrationManager.clearTokenIfUnavailable() }
     }
 }

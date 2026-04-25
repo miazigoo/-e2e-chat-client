@@ -201,14 +201,14 @@ fun SettingsScreen(
 
                 ToggleRow(
                     title = "Push-уведомления",
-                    subtitle = "Главный серверный переключатель уведомлений",
+                    subtitle = "Показывать уведомления на устройстве и синхронизировать настройку с сервером",
                     checked = state.pushNotificationsEnabled,
                     onCheckedChange = viewModel::setPushNotificationsEnabled,
                 )
 
                 ToggleRow(
                     title = "Уведомления об обновлениях",
-                    subtitle = "Сервер может присылать push о новых APK",
+                    subtitle = "Показывать уведомления о новых APK и свежих production-релизах",
                     checked = state.apkUpdateNotificationsEnabled,
                     onCheckedChange = viewModel::setApkUpdateNotificationsEnabled,
                 )

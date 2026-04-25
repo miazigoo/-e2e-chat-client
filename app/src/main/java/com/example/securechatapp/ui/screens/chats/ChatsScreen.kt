@@ -47,6 +47,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.ui.components.BrandMark
+import com.example.securechatapp.ui.components.BrandedSkeletonBlock
+import com.example.securechatapp.ui.components.BrandedSkeletonLines
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import com.example.securechatapp.ui.components.BrandedEmptyState
@@ -178,10 +180,7 @@ fun ChatsScreen(
                 SectionTitle("Чаты")
 
                 if (state.isLoading && state.conversations.isEmpty()) {
-                    EmptyHint(
-                        title = "Загружаем чаты",
-                        subtitle = "Синхронизируем последние диалоги и статусы",
-                    )
+                    ChatsSkeletonList()
                 }
 
                 if (!state.isLoading && state.conversations.isEmpty()) {
@@ -207,6 +206,35 @@ fun ChatsScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatsSkeletonList() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        repeat(4) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BrandedSkeletonBlock(
+                    modifier = Modifier.size(52.dp),
+                    height = 52.dp,
+                    cornerRadius = 26.dp,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                BrandedSkeletonLines(
+                    modifier = Modifier.weight(1f),
+                    primaryWidthFraction = 0.88f,
+                    secondaryWidthFraction = 0.54f,
+                )
             }
         }
     }

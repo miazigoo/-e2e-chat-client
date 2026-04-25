@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.securechatapp.ui.components.BrandedSkeletonBlock
+import com.example.securechatapp.ui.components.BrandedSkeletonLines
 import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 
 @Composable
@@ -158,7 +161,7 @@ fun ConversationScreen(
             ) {
                 if (state.isLoading && state.messages.isEmpty()) {
                     item {
-                        EmptyConversationHint("Загрузка сообщений...")
+                        ConversationSkeletonState()
                     }
                 }
 
@@ -326,6 +329,43 @@ fun ConversationScreen(
             )
         }
 
+    }
+}
+
+@Composable
+private fun ConversationSkeletonState() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+    ) {
+        repeat(4) { index ->
+            val isMine = index % 2 == 0
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (isMine) {
+                    androidx.compose.foundation.layout.Arrangement.End
+                } else {
+                    androidx.compose.foundation.layout.Arrangement.Start
+                },
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(if (isMine) 0.72f else 0.8f),
+                ) {
+                    BrandedSkeletonBlock(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 64.dp,
+                        cornerRadius = 22.dp,
+                    )
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
+                    BrandedSkeletonLines(
+                        primaryWidthFraction = 0.42f,
+                        secondaryWidthFraction = 0.28f,
+                    )
+                }
+            }
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(10.dp))
+        }
     }
 }
 

@@ -6,6 +6,7 @@ import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
 import com.example.securechatapp.data.repository.AppUpdateRepository
@@ -72,6 +73,7 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessionLocalDataSource: SecureSessionLocalDataSource,
     private val themePreferenceDataSource: ThemePreferenceDataSource,
+    private val notificationPreferenceDataSource: NotificationPreferenceDataSource,
     private val sessionRepository: SessionRepository,
     private val userProfileRepository: UserProfileRepository,
     private val appUpdateRepository: AppUpdateRepository,
@@ -85,6 +87,7 @@ class SettingsViewModel @Inject constructor(
     init {
         observeSession()
         observeTheme()
+        observeNotificationPreferences()
         refreshProfile()
         checkForAppUpdates()
     }
@@ -137,6 +140,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun observeNotificationPreferences() {
+        viewModelScope.launch {
+            notificationPreferenceDataSource.pushNotificationsEnabledFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(pushNotificationsEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.apkUpdateNotificationsEnabledFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(apkUpdateNotificationsEnabled = enabled) }
+            }
+        }
+    }
+
     fun setDarkThemeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themePreferenceDataSource.setDarkThemeEnabled(enabled)
@@ -170,11 +186,18 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setPushNotificationsEnabled(enabled: Boolean) {
-        _uiState.update { it.copy(pushNotificationsEnabled = enabled) }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.setPushNotificationsEnabled(enabled)
+            if (enabled) {
+                notificationPreferenceDataSource.resetNotificationPermissionPrompt()
+            }
+        }
     }
 
     fun setApkUpdateNotificationsEnabled(enabled: Boolean) {
-        _uiState.update { it.copy(apkUpdateNotificationsEnabled = enabled) }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.setApkUpdateNotificationsEnabled(enabled)
+        }
     }
 
     fun refreshProfile() {
@@ -187,8 +210,17 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            runCatching { userProfileRepository.getMyProfile() }
-                .onSuccess { profile ->
+            val result = runCatching { userProfileRepository.getMyProfile() }
+
+            result
+                .getOrNull()
+                ?.let { profile ->
+                    notificationPreferenceDataSource.setPushNotificationsEnabled(
+                        profile.settings.pushNotificationsEnabled,
+                    )
+                    notificationPreferenceDataSource.setApkUpdateNotificationsEnabled(
+                        profile.settings.apkUpdateNotificationsEnabled,
+                    )
                     _uiState.update {
                         it.copy(
                             isLoadingProfile = false,
@@ -206,7 +238,7 @@ class SettingsViewModel @Inject constructor(
                         )
                     }
                 }
-                .onFailure { error ->
+            result.exceptionOrNull()?.let { error ->
                     _uiState.update {
                         it.copy(
                             isLoadingProfile = false,
@@ -228,7 +260,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
 
-            runCatching {
+            val result = runCatching {
                 userProfileRepository.updateMyProfile(
                     UpdateUserProfileInput(
                         nickname = current.nickname,
@@ -240,7 +272,15 @@ class SettingsViewModel @Inject constructor(
                         apkUpdateNotificationsEnabled = current.apkUpdateNotificationsEnabled,
                     )
                 )
-            }.onSuccess { profile ->
+            }
+
+            result.getOrNull()?.let { profile ->
+                notificationPreferenceDataSource.setPushNotificationsEnabled(
+                    profile.settings.pushNotificationsEnabled,
+                )
+                notificationPreferenceDataSource.setApkUpdateNotificationsEnabled(
+                    profile.settings.apkUpdateNotificationsEnabled,
+                )
                 _uiState.update {
                     it.copy(
                         isSavingProfile = false,
@@ -262,7 +302,9 @@ class SettingsViewModel @Inject constructor(
                     "dark" -> themePreferenceDataSource.setDarkThemeEnabled(true)
                     "light" -> themePreferenceDataSource.setDarkThemeEnabled(false)
                 }
-            }.onFailure { error ->
+            }
+
+            result.exceptionOrNull()?.let { error ->
                 _uiState.update {
                     it.copy(
                         isSavingProfile = false,

@@ -7,6 +7,7 @@ import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSo
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.SessionRepository
+import com.example.securechatapp.push.PushRegistrationManager
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,7 @@ class AppRuntimeManager @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val outboxDispatcher: OutboxDispatcher,
+    private val pushRegistrationManager: PushRegistrationManager,
 ) : DefaultLifecycleObserver {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -71,15 +73,24 @@ class AppRuntimeManager @Inject constructor(
             val session = sessionLocalDataSource.getSessionSnapshot()
             val authorized = !session.accessToken.isNullOrBlank()
 
-            if (authorized && isForeground) {
-                activateRuntime()
+            if (authorized) {
+                activateAuthorizedRuntime()
+                if (isForeground) {
+                    activateForegroundRuntime()
+                } else {
+                    deactivateForegroundRuntime()
+                }
             } else {
                 deactivateRuntime()
             }
         }
     }
 
-    private suspend fun activateRuntime() {
+    private suspend fun activateAuthorizedRuntime() {
+        pushRegistrationManager.syncCurrentToken()
+    }
+
+    private suspend fun activateForegroundRuntime() {
         realtimeWebSocketManager.connectIfNeeded()
         outboxDispatcher.recoverStuckMessages()
         outboxDispatcher.drainAll()
@@ -89,6 +100,11 @@ class AppRuntimeManager @Inject constructor(
     }
 
     private suspend fun deactivateRuntime() {
+        deactivateForegroundRuntime()
+        pushRegistrationManager.clearTokenIfUnavailable()
+    }
+
+    private suspend fun deactivateForegroundRuntime() {
         heartbeatJob?.cancel()
         heartbeatJob = null
 
