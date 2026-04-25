@@ -18,9 +18,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeViewModel: ThemeViewModel = hiltViewModel()
             val darkTheme by themeViewModel.darkThemeEnabled.collectAsStateWithLifecycle()
+            val colorScheme by themeViewModel.colorScheme.collectAsStateWithLifecycle()
 
             SecureChatAppTheme(
                 darkTheme = darkTheme,
+                palette = colorScheme,
                 dynamicColor = false,
             ) {
                 SecureChatNavHost()

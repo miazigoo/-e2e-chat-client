@@ -2,67 +2,98 @@ package com.example.securechatapp.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 
-private val LightColorScheme = lightColorScheme(
-    primary = TgBlue,
-    onPrimary = TgSurface,
-    primaryContainer = TgBlueLight,
-    onPrimaryContainer = TgBlueDark,
+private fun lightColorScheme(bundle: SecureChatPaletteBundle): ColorScheme = lightColorScheme(
+    primary = bundle.primary,
+    onPrimary = bundle.surface,
+    primaryContainer = bundle.primaryLight,
+    onPrimaryContainer = bundle.primaryDark,
 
-    secondary = TgBlueDark,
-    onSecondary = TgSurface,
+    secondary = bundle.secondary,
+    onSecondary = bundle.surface,
 
-    background = TgBackground,
-    onBackground = TgTextPrimary,
+    background = bundle.background,
+    onBackground = bundle.textPrimary,
 
-    surface = TgSurface,
-    onSurface = TgTextPrimary,
-    surfaceVariant = TgSurfaceAlt,
-    onSurfaceVariant = TgTextSecondary,
+    surface = bundle.surface,
+    onSurface = bundle.textPrimary,
+    surfaceVariant = bundle.surfaceAlt,
+    onSurfaceVariant = bundle.textSecondary,
 
-    outline = TgOutline,
-    error = TgError,
+    outline = bundle.outline,
+    error = bundle.error,
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = TgBlue,
-    onPrimary = TgSurface,
-    primaryContainer = TgDarkSurfaceAlt,
-    onPrimaryContainer = TgDarkTextPrimary,
+private fun darkColorScheme(bundle: SecureChatPaletteBundle): ColorScheme = darkColorScheme(
+    primary = bundle.primary,
+    onPrimary = bundle.surface,
+    primaryContainer = bundle.darkSurfaceAlt,
+    onPrimaryContainer = bundle.darkTextPrimary,
 
-    secondary = TgBlueDark,
-    onSecondary = TgSurface,
+    secondary = bundle.secondary,
+    onSecondary = bundle.surface,
 
-    background = TgDarkBackground,
-    onBackground = TgDarkTextPrimary,
+    background = bundle.darkBackground,
+    onBackground = bundle.darkTextPrimary,
 
-    surface = TgDarkSurface,
-    onSurface = TgDarkTextPrimary,
-    surfaceVariant = TgDarkSurfaceAlt,
-    onSurfaceVariant = TgDarkTextSecondary,
+    surface = bundle.darkSurface,
+    onSurface = bundle.darkTextPrimary,
+    surfaceVariant = bundle.darkSurfaceAlt,
+    onSurfaceVariant = bundle.darkTextSecondary,
 
-    outline = TgDarkOutline,
-    error = TgError,
+    outline = bundle.darkOutline,
+    error = bundle.error,
 )
 
 @Composable
 fun SecureChatAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    palette: ThemePalette = ThemePalette.TELEGRAM,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val bundle = themePaletteBundle(palette)
     val colorScheme = if (darkTheme) {
-        DarkColorScheme
+        darkColorScheme(bundle)
     } else {
-        LightColorScheme
+        lightColorScheme(bundle)
+    }
+    val extraColors = if (darkTheme) {
+        SecureChatExtraColors(
+            wallpaper = bundle.darkWallpaper,
+            outgoingBubble = bundle.darkOutgoingBubble,
+            incomingBubble = bundle.darkIncomingBubble,
+            topBar = bundle.topBarDark,
+        )
+    } else {
+        SecureChatExtraColors(
+            wallpaper = bundle.background,
+            outgoingBubble = bundle.outgoingBubble,
+            incomingBubble = bundle.incomingBubble,
+            topBar = bundle.topBarLight,
+        )
+    }
+    val useDynamicColor = dynamicColor
+    if (useDynamicColor) {
+        // Dynamic color intentionally disabled for a consistent cross-device identity.
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalSecureChatExtraColors provides extraColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content,
+        )
+    }
+}
+
+object SecureChatTheme {
+    val extras: SecureChatExtraColors
+        @Composable
+        get() = LocalSecureChatExtraColors.current
 }

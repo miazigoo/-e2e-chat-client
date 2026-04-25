@@ -31,10 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessageSendStatus
-import com.example.securechatapp.ui.theme.TgDarkIncomingBubble
-import com.example.securechatapp.ui.theme.TgDarkOutgoingBubble
-import com.example.securechatapp.ui.theme.TgIncomingBubble
-import com.example.securechatapp.ui.theme.TgOutgoingBubble
+import com.example.securechatapp.ui.theme.SecureChatTheme
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -52,11 +49,12 @@ fun MessageBubble(
     onPinMessage: () -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
+    val extraColors = SecureChatTheme.extras
     val bubbleColor = when {
-        msg.isMine && dark -> TgDarkOutgoingBubble
-        msg.isMine && !dark -> TgOutgoingBubble
-        !msg.isMine && dark -> TgDarkIncomingBubble
-        else -> TgIncomingBubble
+        msg.isMine && dark -> extraColors.outgoingBubble
+        msg.isMine && !dark -> extraColors.outgoingBubble
+        !msg.isMine && dark -> extraColors.incomingBubble
+        else -> extraColors.incomingBubble
     }
 
     var menuExpanded by remember { mutableStateOf(false) }

@@ -12,6 +12,7 @@ import com.example.securechatapp.data.repository.AppUpdateRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.UpdateUserProfileInput
 import com.example.securechatapp.data.repository.UserProfileRepository
+import com.example.securechatapp.ui.theme.ThemePalette
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
@@ -45,6 +46,7 @@ data class SettingsUiState(
     val pushNotificationsEnabled: Boolean = true,
     val apkUpdateNotificationsEnabled: Boolean = true,
     val darkThemeEnabled: Boolean = false,
+    val colorScheme: ThemePalette = ThemePalette.TELEGRAM,
     val isLoadingProfile: Boolean = false,
     val isSavingProfile: Boolean = false,
     val isUploadingAvatar: Boolean = false,
@@ -126,11 +128,24 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            themePreferenceDataSource.colorSchemeFlow.collectLatest { palette ->
+                _uiState.update {
+                    it.copy(colorScheme = palette)
+                }
+            }
+        }
     }
 
     fun setDarkThemeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themePreferenceDataSource.setDarkThemeEnabled(enabled)
+        }
+    }
+
+    fun setColorScheme(palette: ThemePalette) {
+        viewModelScope.launch {
+            themePreferenceDataSource.setColorScheme(palette)
         }
     }
 

@@ -18,13 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.ui.theme.TgChatWallpaper
-import com.example.securechatapp.ui.theme.TgDarkChatWallpaper
+import com.example.securechatapp.ui.theme.SecureChatTheme
 
 @Composable
 fun TelegramChatWallpaper() {
     val dark = isSystemInDarkTheme()
-    val base = if (dark) TgDarkChatWallpaper else TgChatWallpaper
+    val extraColors = SecureChatTheme.extras
+    val base = extraColors.wallpaper
     val accent1 = MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.10f else 0.07f)
     val accent2 = MaterialTheme.colorScheme.secondary.copy(alpha = if (dark) 0.07f else 0.05f)
     val accent3 = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (dark) 0.10f else 0.06f)

@@ -1,7 +1,6 @@
 package com.example.securechatapp.ui.screens.conversation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,8 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.securechatapp.ui.theme.TgTopBarDark
-import com.example.securechatapp.ui.theme.TgTopBarLight
+import com.example.securechatapp.ui.theme.SecureChatTheme
 
 @Composable
 fun ConversationTopBar(
@@ -35,13 +33,13 @@ fun ConversationTopBar(
     sharedSecretEnabled: Boolean,
     localSharedSecretEnabled: Boolean,
 ) {
-    val dark = isSystemInDarkTheme()
+    val extraColors = SecureChatTheme.extras
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding(),
-        color = if (dark) TgTopBarDark else TgTopBarLight,
+        color = extraColors.topBar,
         tonalElevation = 2.dp,
         shadowElevation = 6.dp,
     ) {
