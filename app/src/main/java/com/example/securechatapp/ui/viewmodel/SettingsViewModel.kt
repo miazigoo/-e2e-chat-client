@@ -9,6 +9,7 @@ import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
+import com.example.securechatapp.data.repository.BackendApiException
 import com.example.securechatapp.data.repository.AppUpdateRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.UpdateUserProfileInput
@@ -46,6 +47,15 @@ data class SettingsUiState(
     val profileTheme: String = "system",
     val pushNotificationsEnabled: Boolean = true,
     val apkUpdateNotificationsEnabled: Boolean = true,
+    val google2faEnabled: Boolean = false,
+    val pendingGoogle2faSecret: String? = null,
+    val pendingGoogle2faProvisioningUri: String? = null,
+    val pendingGoogle2faIssuer: String? = null,
+    val pendingGoogle2faAccountName: String? = null,
+    val google2faConfirmedAt: String? = null,
+    val isStartingGoogle2fa: Boolean = false,
+    val isConfirmingGoogle2fa: Boolean = false,
+    val isDisablingGoogle2fa: Boolean = false,
     val darkThemeEnabled: Boolean = false,
     val colorScheme: ThemePalette = ThemePalette.TELEGRAM,
     val isLoadingProfile: Boolean = false,
@@ -234,6 +244,7 @@ class SettingsViewModel @Inject constructor(
                             profileTheme = profile.settings.theme,
                             pushNotificationsEnabled = profile.settings.pushNotificationsEnabled,
                             apkUpdateNotificationsEnabled = profile.settings.apkUpdateNotificationsEnabled,
+                            google2faEnabled = profile.settings.google2faEnabled,
                             error = null,
                         )
                     }
@@ -294,6 +305,7 @@ class SettingsViewModel @Inject constructor(
                         profileTheme = profile.settings.theme,
                         pushNotificationsEnabled = profile.settings.pushNotificationsEnabled,
                         apkUpdateNotificationsEnabled = profile.settings.apkUpdateNotificationsEnabled,
+                        google2faEnabled = profile.settings.google2faEnabled,
                         info = "Профиль обновлён",
                     )
                 }
@@ -445,6 +457,122 @@ class SettingsViewModel @Inject constructor(
                     },
                 )
             }
+        }
+    }
+
+    fun beginGoogle2faSetup() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isStartingGoogle2fa = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching { userProfileRepository.beginGoogle2faSetup() }
+                .onSuccess { setup ->
+                    _uiState.update {
+                        it.copy(
+                            isStartingGoogle2fa = false,
+                            pendingGoogle2faSecret = setup.secret,
+                            pendingGoogle2faProvisioningUri = setup.provisioningUri,
+                            pendingGoogle2faIssuer = setup.issuer,
+                            pendingGoogle2faAccountName = setup.accountName,
+                            info = "Секрет для Google 2FA создан. Добавьте его в Google Authenticator и подтвердите кодом.",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    val backendError = error as? BackendApiException
+                    _uiState.update {
+                        it.copy(
+                            isStartingGoogle2fa = false,
+                            error = if (backendError?.code == "GOOGLE_2FA_ALREADY_ENABLED") {
+                                "Google 2FA уже включена для этого аккаунта."
+                            } else {
+                                error.message ?: "Не удалось начать настройку Google 2FA"
+                            },
+                        )
+                    }
+                }
+        }
+    }
+
+    fun confirmGoogle2fa(code: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isConfirmingGoogle2fa = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching { userProfileRepository.confirmGoogle2faSetup(code) }
+                .onSuccess { status ->
+                    _uiState.update {
+                        it.copy(
+                            isConfirmingGoogle2fa = false,
+                            google2faEnabled = status.enabled,
+                            google2faConfirmedAt = status.confirmedAt,
+                            pendingGoogle2faSecret = null,
+                            pendingGoogle2faProvisioningUri = null,
+                            pendingGoogle2faIssuer = null,
+                            pendingGoogle2faAccountName = null,
+                            info = "Google 2FA успешно включена.",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    val backendError = error as? BackendApiException
+                    _uiState.update {
+                        it.copy(
+                            isConfirmingGoogle2fa = false,
+                            error = if (backendError?.code == "INVALID_TOTP_CODE") {
+                                "Код не совпал. Попробуйте позже и введите актуальный код из приложения."
+                            } else {
+                                error.message ?: "Не удалось подтвердить Google 2FA"
+                            },
+                        )
+                    }
+                }
+        }
+    }
+
+    fun disableGoogle2fa() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isDisablingGoogle2fa = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching { userProfileRepository.disableGoogle2fa() }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            isDisablingGoogle2fa = false,
+                            google2faEnabled = false,
+                            google2faConfirmedAt = null,
+                            pendingGoogle2faSecret = null,
+                            pendingGoogle2faProvisioningUri = null,
+                            pendingGoogle2faIssuer = null,
+                            pendingGoogle2faAccountName = null,
+                            info = "Google 2FA отключена.",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isDisablingGoogle2fa = false,
+                            error = error.message ?: "Не удалось отключить Google 2FA",
+                        )
+                    }
+                }
         }
     }
 

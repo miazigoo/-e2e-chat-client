@@ -72,6 +72,6 @@ devandprod_backend/.env
 pgdump_cms/*
 .kotlin
 .codex
-
+/app/google-services.json
 
 

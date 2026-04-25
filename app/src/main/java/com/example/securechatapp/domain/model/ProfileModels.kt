@@ -5,6 +5,7 @@ data class UserProfileSettings(
     val theme: String,
     val pushNotificationsEnabled: Boolean,
     val apkUpdateNotificationsEnabled: Boolean,
+    val google2faEnabled: Boolean,
 )
 
 data class UserProfile(

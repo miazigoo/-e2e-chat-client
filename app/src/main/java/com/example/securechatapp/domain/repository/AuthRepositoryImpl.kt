@@ -7,10 +7,13 @@ import com.example.securechatapp.crypto.signal.SignalBootstrapKeyMaterialProvide
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
+import com.example.securechatapp.data.remote.dto.auth.Google2FAConfirmRequestDto
 import com.example.securechatapp.data.remote.dto.auth.LoginRequestDto
 import com.example.securechatapp.data.remote.dto.auth.OneTimePreKeyDto
 import com.example.securechatapp.data.remote.dto.auth.RegisterRequestDto
 import com.example.securechatapp.data.remote.dto.auth.VerifyEmailCodeRequestDto
+import com.example.securechatapp.domain.model.Google2faSetupResult
+import com.example.securechatapp.domain.model.Google2faStatusResult
 import com.example.securechatapp.domain.model.LoginResult
 import com.example.securechatapp.domain.model.RegisterResult
 import com.example.securechatapp.domain.model.VerifyEmailCodeResult
@@ -74,6 +77,7 @@ class AuthRepositoryImpl @Inject constructor(
         nickname: String,
         password: String,
         deviceUuid: String?,
+        totpCode: String?,
     ): AppResult<LoginResult> {
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
 
@@ -83,6 +87,7 @@ class AuthRepositoryImpl @Inject constructor(
                     nickname = nickname,
                     password = password,
                     deviceUuid = stableDeviceUuid,
+                    totpCode = totpCode?.trim()?.takeIf { it.isNotEmpty() },
                 )
             )
 
@@ -97,6 +102,7 @@ class AuthRepositoryImpl @Inject constructor(
                     nickname = nickname,
                     password = password,
                     deviceUuid = stableDeviceUuid,
+                    totpCode = totpCode,
                 )
             }
 
@@ -113,6 +119,7 @@ class AuthRepositoryImpl @Inject constructor(
             AppResult.Success(
                 LoginResult(
                     requiresEmailCode = data.requiresEmailCode,
+                    requiresTotp = data.requiresTotp,
                     requiresBootstrap = data.requiresBootstrap,
                     loginChallengeId = data.loginChallengeId,
                     emailMasked = data.emailMasked,
@@ -122,6 +129,67 @@ class AuthRepositoryImpl @Inject constructor(
                     accessToken = data.accessToken,
                     refreshToken = data.refreshToken,
                     expiresIn = data.expiresIn,
+                )
+            )
+        } catch (e: HttpException) {
+            parseHttpError(e)
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "NETWORK_ERROR",
+                message = e.message ?: "Unknown network error",
+            )
+        }
+    }
+
+    suspend fun beginGoogle2faSetup(): AppResult<Google2faSetupResult> {
+        return try {
+            val data = authApi.beginGoogle2faSetup().data
+            AppResult.Success(
+                Google2faSetupResult(
+                    secret = data.secret,
+                    provisioningUri = data.provisioningUri,
+                    issuer = data.issuer,
+                    accountName = data.accountName,
+                )
+            )
+        } catch (e: HttpException) {
+            parseHttpError(e)
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "NETWORK_ERROR",
+                message = e.message ?: "Unknown network error",
+            )
+        }
+    }
+
+    suspend fun confirmGoogle2faSetup(code: String): AppResult<Google2faStatusResult> {
+        return try {
+            val data = authApi.confirmGoogle2faSetup(
+                Google2FAConfirmRequestDto(code = code.trim()),
+            ).data
+            AppResult.Success(
+                Google2faStatusResult(
+                    enabled = data.enabled,
+                    confirmedAt = data.confirmedAt,
+                )
+            )
+        } catch (e: HttpException) {
+            parseHttpError(e)
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "NETWORK_ERROR",
+                message = e.message ?: "Unknown network error",
+            )
+        }
+    }
+
+    suspend fun disableGoogle2fa(): AppResult<Google2faStatusResult> {
+        return try {
+            val data = authApi.disableGoogle2fa().data
+            AppResult.Success(
+                Google2faStatusResult(
+                    enabled = data.enabled,
+                    confirmedAt = data.confirmedAt,
                 )
             )
         } catch (e: HttpException) {

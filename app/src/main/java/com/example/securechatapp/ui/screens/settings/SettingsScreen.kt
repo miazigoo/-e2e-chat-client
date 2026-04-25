@@ -74,6 +74,7 @@ fun SettingsScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showLogoutAllConfirm by remember { mutableStateOf(false) }
     var showRevokeConfirm by remember { mutableStateOf(false) }
+    var google2faCode by remember { mutableStateOf("") }
 
     val avatarPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -387,6 +388,131 @@ fun SettingsScreen(
             }
 
             SectionCard(title = "Безопасность") {
+                Text(
+                    text = "Google 2FA",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (state.google2faEnabled) {
+                        "Дополнительная TOTP-защита включена. При входе приложение запросит код из Google Authenticator."
+                    } else {
+                        "Опциональная защита входа через Google Authenticator. По умолчанию отключена."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                SettingRow(
+                    "Статус",
+                    if (state.google2faEnabled) "Включена" else "Отключена",
+                )
+
+                state.google2faConfirmedAt?.let {
+                    HorizontalDivider()
+                    SettingRow("Подтверждена", it)
+                }
+
+                if (!state.google2faEnabled) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = viewModel::beginGoogle2faSetup,
+                        enabled = !state.isStartingGoogle2fa && !state.isConfirmingGoogle2fa,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(
+                            if (state.isStartingGoogle2fa) {
+                                "Готовим секрет..."
+                            } else {
+                                "Включить Google 2FA"
+                            }
+                        )
+                    }
+                }
+
+                state.pendingGoogle2faSecret?.let { secret ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoCard(
+                        title = "Секрет для Google Authenticator",
+                        value = secret,
+                    )
+                    TextButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(secret))
+                            Toast.makeText(context, "Секрет скопирован", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Скопировать секрет")
+                    }
+
+                    state.pendingGoogle2faProvisioningUri?.let { provisioningUri ->
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(provisioningUri))
+                                Toast.makeText(context, "URI для Google Authenticator скопирован", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Скопировать provisioning URI")
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = google2faCode,
+                        onValueChange = { google2faCode = it.filter(Char::isDigit).take(8) },
+                        label = { Text("Код из Google Authenticator") },
+                        supportingText = {
+                            Text("Введите текущий код, чтобы завершить настройку")
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                        ),
+                    )
+
+                    Button(
+                        onClick = { viewModel.confirmGoogle2fa(google2faCode) },
+                        enabled = google2faCode.length >= 6 && !state.isConfirmingGoogle2fa,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(
+                            if (state.isConfirmingGoogle2fa) {
+                                "Проверяем код..."
+                            } else {
+                                "Подтвердить Google 2FA"
+                            }
+                        )
+                    }
+                }
+
+                if (state.google2faEnabled) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = viewModel::disableGoogle2fa,
+                        enabled = !state.isDisablingGoogle2fa,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(
+                            if (state.isDisablingGoogle2fa) {
+                                "Отключаем..."
+                            } else {
+                                "Отключить Google 2FA"
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Button(
                     onClick = { showLogoutConfirm = true },
                     enabled = !state.isLoggingOut,

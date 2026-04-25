@@ -3,6 +3,9 @@ package com.example.securechatapp.data.remote.api
 import com.example.securechatapp.core.network.ApiEnvelopeDto
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceResponseDto
+import com.example.securechatapp.data.remote.dto.auth.Google2FAConfirmRequestDto
+import com.example.securechatapp.data.remote.dto.auth.Google2FASetupResponseDto
+import com.example.securechatapp.data.remote.dto.auth.Google2FAStatusResponseDto
 import com.example.securechatapp.data.remote.dto.auth.LoginRequestDto
 import com.example.securechatapp.data.remote.dto.auth.LoginResponseDto
 import com.example.securechatapp.data.remote.dto.auth.RefreshRequestDto
@@ -11,7 +14,10 @@ import com.example.securechatapp.data.remote.dto.auth.RegisterRequestDto
 import com.example.securechatapp.data.remote.dto.auth.RegisterResponseDto
 import com.example.securechatapp.data.remote.dto.auth.VerifyEmailCodeRequestDto
 import com.example.securechatapp.data.remote.dto.auth.VerifyEmailCodeResponseDto
+import okhttp3.ResponseBody
+import retrofit2.http.DELETE
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 
@@ -36,6 +42,20 @@ interface AuthApi {
     suspend fun refresh(
         @Body body: RefreshRequestDto,
     ): ApiEnvelopeDto<RefreshResponseDto>
+
+    @POST("auth/2fa/google/setup")
+    suspend fun beginGoogle2faSetup(): ApiEnvelopeDto<Google2FASetupResponseDto>
+
+    @POST("auth/2fa/google/confirm")
+    suspend fun confirmGoogle2faSetup(
+        @Body body: Google2FAConfirmRequestDto,
+    ): ApiEnvelopeDto<Google2FAStatusResponseDto>
+
+    @DELETE("auth/2fa/google")
+    suspend fun disableGoogle2fa(): ApiEnvelopeDto<Google2FAStatusResponseDto>
+
+    @GET("auth/2fa/google/qr")
+    suspend fun getGoogle2faQr(): ResponseBody
 
     @POST("auth/bootstrap")
     suspend fun bootstrap(

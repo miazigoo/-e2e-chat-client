@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 data class AuthUiState(
     val isLoading: Boolean = false,
     val isAuthorized: Boolean = false,
+    val requiresTotp: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
     val debugCode: String? = null,
@@ -48,6 +49,7 @@ class AuthViewModel @Inject constructor(
                         errorMessage = if (sessionExpired) null else it.errorMessage,
                         debugCode = if (sessionExpired) null else it.debugCode,
                         emailMasked = if (sessionExpired) null else it.emailMasked,
+                        requiresTotp = if (sessionExpired) false else it.requiresTotp,
                     )
                 }
                 hadAuthorizedSession = hadAuthorizedSession || isAuthorized
@@ -88,7 +90,12 @@ class AuthViewModel @Inject constructor(
                 is AppResult.Error -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = result.message,
+                        requiresTotp = result.code == "INVALID_TOTP_CODE",
+                        errorMessage = if (result.code == "INVALID_TOTP_CODE") {
+                            "Код Google 2FA не совпал. Проверьте его и попробуйте снова."
+                        } else {
+                            result.message
+                        },
                     )
                 }
             }
@@ -98,6 +105,7 @@ class AuthViewModel @Inject constructor(
     fun login(
         nickname: String,
         password: String,
+        totpCode: String?,
         onNeedVerifyCode: (String) -> Unit,
         onSuccess: () -> Unit,
     ) {
@@ -108,6 +116,7 @@ class AuthViewModel @Inject constructor(
                 infoMessage = null,
                 debugCode = null,
                 emailMasked = null,
+                requiresTotp = false,
             )
 
             val deviceUuid = sessionLocalDataSource.getOrCreateDeviceUuid()
@@ -117,6 +126,7 @@ class AuthViewModel @Inject constructor(
                     nickname = nickname,
                     password = password,
                     deviceUuid = deviceUuid,
+                    totpCode = totpCode,
                 )
             ) {
                 is AppResult.Success -> {
@@ -127,9 +137,16 @@ class AuthViewModel @Inject constructor(
                         debugCode = data.debugCode,
                         emailMasked = data.emailMasked,
                         isAuthorized = !data.accessToken.isNullOrBlank(),
+                        requiresTotp = data.requiresTotp,
+                        infoMessage = if (data.requiresTotp) {
+                            "Введите код из Google Authenticator"
+                        } else {
+                            null
+                        },
                     )
 
                     when {
+                        data.requiresTotp -> Unit
                         data.requiresEmailCode && !data.loginChallengeId.isNullOrBlank() -> {
                             onNeedVerifyCode(data.loginChallengeId)
                         }

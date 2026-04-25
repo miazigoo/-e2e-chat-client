@@ -3,8 +3,11 @@ package com.example.securechatapp.data.repository
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.UpdateUserProfileRequestDto
+import com.example.securechatapp.domain.model.Google2faSetupResult
+import com.example.securechatapp.domain.model.Google2faStatusResult
 import com.example.securechatapp.domain.model.UserProfile
 import com.example.securechatapp.domain.model.UserProfileSettings
 import com.example.securechatapp.domain.model.UserSafety
@@ -30,6 +33,7 @@ data class UpdateUserProfileInput(
 class UserProfileRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: ChatBackendApi,
+    private val authRepositoryImpl: AuthRepositoryImpl,
     json: Json,
 ) : BaseApiRepository(json) {
 
@@ -87,6 +91,39 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
+    suspend fun beginGoogle2faSetup(): Google2faSetupResult {
+        return when (val result = authRepositoryImpl.beginGoogle2faSetup()) {
+            is AppResult.Success -> result.data
+            is AppResult.Error -> throw BackendApiException(
+                code = result.code,
+                message = result.message,
+                statusCode = result.statusCode,
+            )
+        }
+    }
+
+    suspend fun confirmGoogle2faSetup(code: String): Google2faStatusResult {
+        return when (val result = authRepositoryImpl.confirmGoogle2faSetup(code)) {
+            is AppResult.Success -> result.data
+            is AppResult.Error -> throw BackendApiException(
+                code = result.code,
+                message = result.message,
+                statusCode = result.statusCode,
+            )
+        }
+    }
+
+    suspend fun disableGoogle2fa(): Google2faStatusResult {
+        return when (val result = authRepositoryImpl.disableGoogle2fa()) {
+            is AppResult.Success -> result.data
+            is AppResult.Error -> throw BackendApiException(
+                code = result.code,
+                message = result.message,
+                statusCode = result.statusCode,
+            )
+        }
+    }
+
     private fun queryDisplayName(uri: Uri): String? {
         return context.contentResolver.query(
             uri,
@@ -116,6 +153,7 @@ private fun com.example.securechatapp.data.remote.dto.UserProfileResponseDto.toD
             theme = settings.theme,
             pushNotificationsEnabled = settings.pushNotificationsEnabled,
             apkUpdateNotificationsEnabled = settings.apkUpdateNotificationsEnabled,
+            google2faEnabled = settings.google2faEnabled,
         ),
     )
 }

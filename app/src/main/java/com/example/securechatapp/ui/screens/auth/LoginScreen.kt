@@ -17,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.BuildConfig
@@ -27,17 +28,28 @@ import com.example.securechatapp.ui.viewmodel.AuthUiState
 @Composable
 fun LoginScreen(
     state: AuthUiState,
-    onLogin: (String, String, (String) -> Unit, () -> Unit) -> Unit,
+    onLogin: (String, String, String?, (String) -> Unit, () -> Unit) -> Unit,
     onOpenRegister: () -> Unit,
     onLoginSuccess: () -> Unit,
     onNeedVerifyCode: (String) -> Unit,
 ) {
     var nickname by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var totpCode by rememberSaveable { mutableStateOf("") }
 
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
-    val canSubmit = nicknameError == null && passwordError == null && !state.isLoading
+    val totpError = remember(totpCode, state.requiresTotp) {
+        when {
+            !state.requiresTotp -> null
+            totpCode.length < 6 -> "Введите 6 цифр из Google Authenticator"
+            else -> null
+        }
+    }
+    val canSubmit = nicknameError == null &&
+            passwordError == null &&
+            totpError == null &&
+            !state.isLoading
 
     TelegramAuthScaffold(
         title = "Secure Chat",
@@ -79,6 +91,28 @@ fun LoginScreen(
             ),
         )
 
+        if (state.requiresTotp) {
+            OutlinedTextField(
+                value = totpCode,
+                onValueChange = { totpCode = it.filter(Char::isDigit).take(8) },
+                label = { Text("Google 2FA код") },
+                supportingText = {
+                    Text(totpError ?: "Открой Google Authenticator и введи текущий код")
+                },
+                isError = totpError != null,
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                ),
+            )
+        }
+
         state.errorMessage?.let {
             TelegramStatusCard(text = it, isError = true)
         }
@@ -102,6 +136,7 @@ fun LoginScreen(
                 onLogin(
                     AuthInputValidator.normalizeNickname(nickname),
                     password,
+                    totpCode.takeIf { it.isNotBlank() },
                     onNeedVerifyCode,
                     onLoginSuccess,
                 )
@@ -116,7 +151,15 @@ fun LoginScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
         ) {
-            Text(if (state.isLoading) "Входим..." else "Войти")
+            Text(
+                if (state.isLoading) {
+                    "Входим..."
+                } else if (state.requiresTotp) {
+                    "Подтвердить 2FA"
+                } else {
+                    "Войти"
+                }
+            )
         }
 
         TextButton(

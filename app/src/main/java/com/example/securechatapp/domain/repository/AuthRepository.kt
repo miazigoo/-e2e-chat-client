@@ -17,6 +17,7 @@ interface AuthRepository {
         nickname: String,
         password: String,
         deviceUuid: String?,
+        totpCode: String? = null,
     ): AppResult<LoginResult>
 
     suspend fun verifyEmailCode(

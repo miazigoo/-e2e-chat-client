@@ -10,6 +10,7 @@ data class RegisterResult(
 
 data class LoginResult(
     val requiresEmailCode: Boolean,
+    val requiresTotp: Boolean,
     val requiresBootstrap: Boolean,
     val loginChallengeId: String?,
     val emailMasked: String?,
@@ -28,4 +29,16 @@ data class VerifyEmailCodeResult(
     val accessToken: String?,
     val refreshToken: String?,
     val expiresIn: Int?,
+)
+
+data class Google2faSetupResult(
+    val secret: String,
+    val provisioningUri: String,
+    val issuer: String,
+    val accountName: String,
+)
+
+data class Google2faStatusResult(
+    val enabled: Boolean,
+    val confirmedAt: String?,
 )

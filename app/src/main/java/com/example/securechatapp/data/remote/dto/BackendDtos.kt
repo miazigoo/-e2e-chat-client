@@ -211,6 +211,8 @@ data class UserProfileSettingsDto(
     val pushNotificationsEnabled: Boolean,
     @SerialName("apk_update_notifications_enabled")
     val apkUpdateNotificationsEnabled: Boolean,
+    @SerialName("google_2fa_enabled")
+    val google2faEnabled: Boolean = false,
 )
 
 @Serializable

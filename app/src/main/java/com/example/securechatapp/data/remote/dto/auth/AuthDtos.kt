@@ -31,12 +31,16 @@ data class LoginRequestDto(
     val password: String,
     @SerialName("device_uuid")
     val deviceUuid: String? = null,
+    @SerialName("totp_code")
+    val totpCode: String? = null,
 )
 
 @Serializable
 data class LoginResponseDto(
     @SerialName("requires_email_code")
     val requiresEmailCode: Boolean,
+    @SerialName("requires_totp")
+    val requiresTotp: Boolean = false,
     @SerialName("requires_bootstrap")
     val requiresBootstrap: Boolean = false,
     @SerialName("login_challenge_id")
@@ -96,6 +100,28 @@ data class RefreshResponseDto(
     val refreshToken: String,
     @SerialName("expires_in")
     val expiresIn: Int,
+)
+
+@Serializable
+data class Google2FASetupResponseDto(
+    val secret: String,
+    @SerialName("provisioning_uri")
+    val provisioningUri: String,
+    val issuer: String,
+    @SerialName("account_name")
+    val accountName: String,
+)
+
+@Serializable
+data class Google2FAConfirmRequestDto(
+    val code: String,
+)
+
+@Serializable
+data class Google2FAStatusResponseDto(
+    val enabled: Boolean,
+    @SerialName("confirmed_at")
+    val confirmedAt: String? = null,
 )
 
 @Serializable

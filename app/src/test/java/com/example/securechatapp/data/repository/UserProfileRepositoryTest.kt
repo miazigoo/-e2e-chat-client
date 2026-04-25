@@ -23,11 +23,13 @@ class UserProfileRepositoryTest {
     private val context = mockk<Context>()
     private val contentResolver = mockk<ContentResolver>(relaxed = true)
     private val api = mockk<ChatBackendApi>()
+    private val authRepositoryImpl = mockk<AuthRepositoryImpl>(relaxed = true)
     private val json = Json { ignoreUnknownKeys = true }
 
     private val repository = UserProfileRepository(
         context = context,
         api = api,
+        authRepositoryImpl = authRepositoryImpl,
         json = json,
     )
 
@@ -49,6 +51,7 @@ class UserProfileRepositoryTest {
         assertEquals("alice", result.nickname)
         assertEquals("ru", result.settings.languageCode)
         assertTrue(result.settings.pushNotificationsEnabled)
+        assertFalse(result.settings.google2faEnabled)
     }
 
     @Test
@@ -136,6 +139,7 @@ class UserProfileRepositoryTest {
             theme = theme,
             pushNotificationsEnabled = pushNotificationsEnabled,
             apkUpdateNotificationsEnabled = true,
+            google2faEnabled = false,
         ),
     )
 }
