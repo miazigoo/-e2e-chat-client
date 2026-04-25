@@ -62,6 +62,22 @@ fun ConversationScreen(
     val conversationRows = remember(state.messages) {
         buildConversationRows(state.messages)
     }
+    val conversationBlockedReason = remember(
+        state.isConversationPurged,
+        state.isConversationActive,
+        state.sharedSecretEnabled,
+        state.localSharedSecretEnabled,
+    ) {
+        when {
+            state.isConversationPurged -> "Чат удалён на сервере. Отправка и загрузка файлов недоступны."
+            !state.isConversationActive -> "Чат деактивирован на сервере. Доступен только просмотр истории."
+            state.sharedSecretEnabled && !state.localSharedSecretEnabled -> "Для отправки сообщений в этом чате включите дополнительное шифрование на этом устройстве."
+            else -> null
+        }
+    }
+    val composerPlaceholder = remember(conversationBlockedReason) {
+        conversationBlockedReason ?: "Сообщение"
+    }
 
     val subtitle = remember(
         state.messages,
@@ -109,6 +125,10 @@ fun ConversationScreen(
 
             state.info?.let {
                 Banner(text = it)
+            }
+
+            conversationBlockedReason?.let {
+                Banner(text = it, isError = state.isConversationPurged)
             }
 
             LazyColumn(
@@ -206,7 +226,11 @@ fun ConversationScreen(
             ConversationComposer(
                 message = message,
                 onMessageChange = { message = it },
-                onAttachClick = { attachmentPicker.launch("*/*") },
+                onAttachClick = {
+                    if (conversationBlockedReason == null) {
+                        attachmentPicker.launch("*/*")
+                    }
+                },
                 onSendClick = {
                     val textToSend = message
                     val attachmentToSend = pendingAttachmentUri
@@ -221,6 +245,8 @@ fun ConversationScreen(
                     }
                 },
                 isUploading = state.isUploadingAttachment,
+                inputEnabled = conversationBlockedReason == null,
+                placeholder = composerPlaceholder,
                 sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
             )
         }

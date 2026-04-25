@@ -292,6 +292,12 @@ private fun ChatListItem(
     item: ConversationListItem,
     onClick: () -> Unit,
 ) {
+    val statusLabel = when {
+        item.isPurged -> "Удалён"
+        !item.isActive -> "Недоступен"
+        else -> null
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -318,6 +324,32 @@ private fun ChatListItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+
+                statusLabel?.let { label ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (item.isPurged) {
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                                } else {
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                                }
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (item.isPurged) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            },
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(2.dp))
 

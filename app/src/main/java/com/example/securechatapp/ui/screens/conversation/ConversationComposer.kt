@@ -31,6 +31,8 @@ fun ConversationComposer(
     onAttachClick: () -> Unit,
     onSendClick: () -> Unit,
     isUploading: Boolean,
+    inputEnabled: Boolean,
+    placeholder: String,
     sendEnabled: Boolean,
 ) {
     Surface(
@@ -55,6 +57,7 @@ fun ConversationComposer(
             ) {
                 Button(
                     onClick = onAttachClick,
+                    enabled = inputEnabled,
                     shape = CircleShape,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -79,7 +82,8 @@ fun ConversationComposer(
                     value = message,
                     onValueChange = onMessageChange,
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Сообщение") },
+                    placeholder = { Text(placeholder) },
+                    enabled = inputEnabled && !isUploading,
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
@@ -92,7 +96,7 @@ fun ConversationComposer(
 
             Button(
                 onClick = onSendClick,
-                enabled = sendEnabled && !isUploading,
+                enabled = inputEnabled && sendEnabled && !isUploading,
                 shape = CircleShape,
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier.size(46.dp),

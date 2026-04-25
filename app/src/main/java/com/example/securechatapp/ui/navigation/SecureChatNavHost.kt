@@ -1,12 +1,14 @@
 package com.example.securechatapp.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.securechatapp.ui.screens.auth.LoginScreen
@@ -26,6 +28,25 @@ fun SecureChatNavHost() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.uiState.collectAsState()
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+
+    LaunchedEffect(authState.isAuthorized, currentRoute) {
+        val protectedRoute = when {
+            currentRoute == null -> false
+            currentRoute == Routes.Chats -> true
+            currentRoute == Routes.Settings -> true
+            currentRoute.startsWith("conversation/") -> true
+            else -> false
+        }
+
+        if (!authState.isAuthorized && protectedRoute) {
+            navController.navigate(Routes.Login) {
+                popUpTo(Routes.Splash) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     NavHost(
         navController = navController,

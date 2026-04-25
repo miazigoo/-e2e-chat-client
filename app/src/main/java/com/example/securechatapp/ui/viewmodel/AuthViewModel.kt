@@ -30,13 +30,27 @@ class AuthViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+    private var hadAuthorizedSession = false
 
     init {
         viewModelScope.launch {
             sessionLocalDataSource.sessionFlow.collect { session ->
+                val isAuthorized = !session.accessToken.isNullOrBlank()
                 _uiState.update {
-                    it.copy(isAuthorized = !session.accessToken.isNullOrBlank())
+                    val sessionExpired = hadAuthorizedSession && !isAuthorized
+                    it.copy(
+                        isAuthorized = isAuthorized,
+                        infoMessage = if (sessionExpired) {
+                            "Сессия завершена на сервере. Войдите снова."
+                        } else {
+                            it.infoMessage
+                        },
+                        errorMessage = if (sessionExpired) null else it.errorMessage,
+                        debugCode = if (sessionExpired) null else it.debugCode,
+                        emailMasked = if (sessionExpired) null else it.emailMasked,
+                    )
                 }
+                hadAuthorizedSession = hadAuthorizedSession || isAuthorized
             }
         }
     }
