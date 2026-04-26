@@ -185,10 +185,14 @@ class AuthViewModel @Inject constructor(
                         isAuthorized = !data.accessToken.isNullOrBlank(),
                         requiresTotp = data.requiresTotp,
                         suggestedNickname = _uiState.value.suggestedNickname,
-                        infoMessage = if (data.requiresTotp) {
-                            "Введите код из Google Authenticator"
-                        } else {
-                            null
+                        infoMessage = when {
+                            data.requiresTotp -> "Введите код из Google Authenticator"
+                            data.requiresEmailCode -> {
+                                data.emailMasked?.let { "Код отправлен на $it" }
+                                    ?: "Введите код из письма"
+                            }
+
+                            else -> null
                         },
                     )
 
@@ -207,6 +211,7 @@ class AuthViewModel @Inject constructor(
                 is AppResult.Error -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        requiresTotp = result.code == "INVALID_TOTP_CODE",
                         errorMessage = result.message,
                     )
                 }

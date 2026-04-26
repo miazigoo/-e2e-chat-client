@@ -57,6 +57,13 @@ fun LoginScreen(
         lastAppliedSuggestedNickname = suggestedNickname
     }
 
+    LaunchedEffect(state.requiresTotp) {
+        if (state.requiresTotp) return@LaunchedEffect
+
+        totpCode = ""
+        totpTouched = false
+    }
+
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
     val totpError = remember(totpCode, state.requiresTotp) {

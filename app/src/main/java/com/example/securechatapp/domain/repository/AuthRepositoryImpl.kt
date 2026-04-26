@@ -118,6 +118,15 @@ class AuthRepositoryImpl @Inject constructor(
                 )
 
                 val data = response.data
+                debugLog(
+                    "login: response requiresEmailCode=${data.requiresEmailCode} " +
+                            "requiresTotp=${data.requiresTotp} " +
+                            "requiresBootstrap=${data.requiresBootstrap} " +
+                            "challengeIdPresent=${!data.loginChallengeId.isNullOrBlank()} " +
+                            "emailMasked=${data.emailMasked ?: "<none>"} " +
+                            "debugCodePresent=${!data.debugCode.isNullOrBlank()} " +
+                            "accessTokenPresent=${!data.accessToken.isNullOrBlank()}",
+                )
                 when (val bootstrapResult = maybeBootstrapDevice(
                     requiresBootstrap = data.requiresBootstrap,
                     bootstrapToken = data.bootstrapToken,
@@ -253,49 +262,50 @@ class AuthRepositoryImpl @Inject constructor(
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
 
         return try {
-            var bootstrapAttempts = 0
-
-            while (true) {
-                val response = authApi.verifyEmailCode(
-                    VerifyEmailCodeRequestDto(
-                        loginChallengeId = loginChallengeId,
-                        code = code,
-                        deviceUuid = stableDeviceUuid,
-                    )
-                )
-
-                val data = response.data
-                when (val bootstrapResult = maybeBootstrapDevice(
-                    requiresBootstrap = data.requiresBootstrap,
-                    bootstrapToken = data.bootstrapToken,
+            val response = authApi.verifyEmailCode(
+                VerifyEmailCodeRequestDto(
+                    loginChallengeId = loginChallengeId,
+                    code = code,
                     deviceUuid = stableDeviceUuid,
-                    bootstrapAttempts = bootstrapAttempts,
-                )) {
-                    BootstrapResult.NotRequired -> {
-                        persistSessionIfPresent(
-                            accessToken = data.accessToken,
-                            refreshToken = data.refreshToken,
-                            deviceUuid = stableDeviceUuid,
-                        )
+                )
+            )
 
-                        return AppResult.Success(
-                            VerifyEmailCodeResult(
-                                requiresBootstrap = data.requiresBootstrap,
-                                bootstrapToken = data.bootstrapToken,
-                                bootstrapExpiresIn = data.bootstrapExpiresIn,
-                                accessToken = data.accessToken,
-                                refreshToken = data.refreshToken,
-                                expiresIn = data.expiresIn,
-                            )
-                        )
-                    }
+            val data = response.data
+            debugLog(
+                "verifyEmailCode: response requiresBootstrap=${data.requiresBootstrap} " +
+                        "bootstrapTokenPresent=${!data.bootstrapToken.isNullOrBlank()} " +
+                        "accessTokenPresent=${!data.accessToken.isNullOrBlank()}",
+            )
 
-                    BootstrapResult.Retried -> bootstrapAttempts++
-                    is BootstrapResult.Error -> return bootstrapResult.result
+            when (val bootstrapResult = maybeBootstrapDevice(
+                requiresBootstrap = data.requiresBootstrap,
+                bootstrapToken = data.bootstrapToken,
+                deviceUuid = stableDeviceUuid,
+                bootstrapAttempts = 0,
+            )) {
+                BootstrapResult.NotRequired -> Unit
+                BootstrapResult.Retried -> {
+                    debugLog("verifyEmailCode: device bootstrap completed, re-login required")
                 }
+                is BootstrapResult.Error -> return bootstrapResult.result
             }
 
-            error("Unreachable verifyEmailCode bootstrap state")
+            persistSessionIfPresent(
+                accessToken = data.accessToken,
+                refreshToken = data.refreshToken,
+                deviceUuid = stableDeviceUuid,
+            )
+
+            AppResult.Success(
+                VerifyEmailCodeResult(
+                    requiresBootstrap = data.requiresBootstrap,
+                    bootstrapToken = data.bootstrapToken,
+                    bootstrapExpiresIn = data.bootstrapExpiresIn,
+                    accessToken = data.accessToken,
+                    refreshToken = data.refreshToken,
+                    expiresIn = data.expiresIn,
+                )
+            )
         } catch (e: HttpException) {
             parseHttpError(e)
         } catch (e: IOException) {
@@ -400,13 +410,53 @@ class AuthRepositoryImpl @Inject constructor(
 
         return AppResult.Error(
             code = backendError.code,
-            message = normalizeErrorMessage(backendError.message, "HTTP ${e.code()}"),
+            message = localizeBackendMessage(
+                code = backendError.code,
+                message = backendError.message,
+                statusCode = backendError.statusCode,
+                fallback = "HTTP ${e.code()}",
+            ),
             statusCode = backendError.statusCode,
         )
     }
 
     private fun normalizeErrorMessage(message: String?, fallback: String): String =
         message?.trim().takeUnless { it.isNullOrEmpty() } ?: fallback
+
+    private fun localizeBackendMessage(
+        code: String,
+        message: String?,
+        statusCode: Int?,
+        fallback: String,
+    ): String {
+        val normalized = message?.trim().orEmpty()
+        if (normalized.isEmpty()) {
+            return when (statusCode) {
+                500 -> "Внутренняя ошибка сервера. Попробуйте позже."
+                503 -> "Сервис временно недоступен. Попробуйте позже."
+                else -> fallback
+            }
+        }
+
+        return when {
+            normalized.equals("Could not deliver verification code", ignoreCase = true) ->
+                "Сервер не смог отправить код подтверждения. Попробуйте позже."
+
+            normalized.equals("Internal server error", ignoreCase = true) ->
+                "Внутренняя ошибка сервера. Попробуйте позже."
+
+            statusCode == 503 && normalized.equals("Service Unavailable", ignoreCase = true) ->
+                "Сервис временно недоступен. Попробуйте позже."
+
+            code == "HTTP_500" && normalized.equals("HTTP 500", ignoreCase = true) ->
+                "Внутренняя ошибка сервера. Попробуйте позже."
+
+            code == "HTTP_503" && normalized.equals("HTTP 503", ignoreCase = true) ->
+                "Сервис временно недоступен. Попробуйте позже."
+
+            else -> normalized
+        }
+    }
 
     private fun debugLog(message: String) {
         runCatching { Log.d(logTag, message) }

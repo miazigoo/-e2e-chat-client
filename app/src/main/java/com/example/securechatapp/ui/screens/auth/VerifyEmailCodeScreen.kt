@@ -36,6 +36,7 @@ fun VerifyEmailCodeScreen(
     val codeError = remember(code) { AuthInputValidator.codeError(code) }
     val showCodeError = codeTouched && codeError != null
     val canSubmit = codeError == null && !state.isLoading
+    val subtitle = state.emailMasked?.let { "Код отправлен на $it" } ?: "Введите код из письма"
     val bottomMessages = buildList<Pair<String, Boolean>> {
         if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
             add("Challenge: $challengeId" to false)
@@ -47,7 +48,7 @@ fun VerifyEmailCodeScreen(
 
     TelegramAuthScaffold(
         title = "Подтверждение входа",
-        subtitle = "Введите код из письма",
+        subtitle = subtitle,
         bottomOverlay = bottomMessages.takeIf { it.isNotEmpty() }?.let { messages ->
             {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
