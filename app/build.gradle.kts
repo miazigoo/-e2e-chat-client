@@ -17,7 +17,7 @@ fun projectPropertyOrEnv(name: String, fallback: String): String =
 
 fun String.asBuildConfigString(): String = "\"$this\""
 
-val defaultDebugApiBaseUrl = "http://10.0.2.2:8000/api/v1/"
+val defaultDebugApiBaseUrl = "https://170.168.10.207/api/v1/"
 val defaultReleaseApiBaseUrl = "https://api.example.com/api/v1/"
 
 val debugApiBaseUrl = projectPropertyOrEnv("SECURE_CHAT_DEBUG_API_BASE_URL", defaultDebugApiBaseUrl)

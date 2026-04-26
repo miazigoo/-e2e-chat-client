@@ -1,5 +1,6 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,12 +15,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -35,6 +42,9 @@ fun ConversationComposer(
     placeholder: String,
     sendEnabled: Boolean,
 ) {
+    var emojiExpanded by remember { mutableStateOf(false) }
+    val quickEmojis = remember { listOf("😀", "😂", "🔥", "❤️", "👍", "🎉", "😮", "😢") }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -72,6 +82,46 @@ fun ConversationComposer(
 
             Spacer(modifier = Modifier.width(8.dp))
 
+            Box {
+                Surface(
+                    modifier = Modifier.size(46.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Button(
+                        onClick = { emojiExpanded = true },
+                        enabled = inputEnabled && !isUploading,
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Text("😊")
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = emojiExpanded,
+                    onDismissRequest = { emojiExpanded = false },
+                ) {
+                    quickEmojis.forEach { emoji ->
+                        DropdownMenuItem(
+                            text = { Text(emoji) },
+                            onClick = {
+                                emojiExpanded = false
+                                val suffix = if (message.isBlank() || message.endsWith(" ")) emoji else " $emoji"
+                                onMessageChange(message + suffix)
+                            },
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             Surface(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
@@ -84,6 +134,8 @@ fun ConversationComposer(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text(placeholder) },
                     enabled = inputEnabled && !isUploading,
+                    minLines = 1,
+                    maxLines = 4,
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),

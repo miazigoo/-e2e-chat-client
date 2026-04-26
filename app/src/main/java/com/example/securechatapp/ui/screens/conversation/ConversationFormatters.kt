@@ -18,7 +18,10 @@ fun buildConversationRows(
         val currentDate = parseLocalDate(message.createdAt)
 
         if (currentDate != null && currentDate != previousDate) {
-            result += ConversationRow.DateSeparator(formatDateSeparator(currentDate))
+            result += ConversationRow.DateSeparator(
+                dateKey = currentDate.toString(),
+                label = formatDateSeparator(currentDate),
+            )
             previousDate = currentDate
         }
 

@@ -39,10 +39,10 @@ Android client for an end-to-end encrypted chat backend with:
 Debug build uses this base URL by default:
 
 ```text
-http://10.0.2.2:8000/api/v1/
+https://170.168.10.207/api/v1/
 ```
 
-That works for the Android emulator when the backend runs on the same host machine.
+Use `SECURE_CHAT_DEBUG_API_BASE_URL` to point to your own HTTPS backend.
 
 ### Build debug
 
@@ -175,4 +175,3 @@ Client is aligned with backend features including:
 - keep production API URL outside the repo
 - prefer using release env vars in CI/CD
 - if push fails locally, configure GitHub credentials first
-

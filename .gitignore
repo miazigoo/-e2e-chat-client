@@ -73,5 +73,5 @@ pgdump_cms/*
 .kotlin
 .codex
 /app/google-services.json
-
+/.gradle-user-home/
 

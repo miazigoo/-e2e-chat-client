@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,12 +36,26 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNeedVerifyCode: (String) -> Unit,
 ) {
-    val initialNickname = state.suggestedNickname
-    var nickname by rememberSaveable(initialNickname) {
-        mutableStateOf(initialNickname.orEmpty())
+    var nickname by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var totpCode by rememberSaveable { mutableStateOf("") }
+    var nicknameTouched by rememberSaveable { mutableStateOf(false) }
+    var passwordTouched by rememberSaveable { mutableStateOf(false) }
+    var totpTouched by rememberSaveable { mutableStateOf(false) }
+    var lastAppliedSuggestedNickname by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(state.suggestedNickname) {
+        val suggestedNickname = state.suggestedNickname?.trim().orEmpty()
+        if (suggestedNickname.isBlank() || suggestedNickname == lastAppliedSuggestedNickname) return@LaunchedEffect
+
+        nickname = suggestedNickname
+        password = ""
+        totpCode = ""
+        nicknameTouched = false
+        passwordTouched = false
+        totpTouched = false
+        lastAppliedSuggestedNickname = suggestedNickname
     }
-    var password by rememberSaveable(initialNickname) { mutableStateOf("") }
-    var totpCode by rememberSaveable(initialNickname) { mutableStateOf("") }
 
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
@@ -51,6 +66,9 @@ fun LoginScreen(
             else -> null
         }
     }
+    val showNicknameError = nicknameTouched && nicknameError != null
+    val showPasswordError = passwordTouched && passwordError != null
+    val showTotpError = totpTouched && totpError != null
     val canSubmit = nicknameError == null &&
             passwordError == null &&
             totpError == null &&
@@ -58,7 +76,6 @@ fun LoginScreen(
 
     val bottomMessages = buildList<Pair<String, Boolean>> {
         state.errorMessage?.let { add(it to true) }
-        state.infoMessage?.let { add(it to false) }
         state.emailMasked?.let { add("Код отправлен на $it" to false) }
         if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
             state.debugCode?.let { add("DEBUG CODE: $it" to false) }
@@ -82,15 +99,25 @@ fun LoginScreen(
             }
         },
     ) {
+        state.infoMessage?.let { infoMessage ->
+            TelegramStatusCard(
+                text = infoMessage,
+                bottomSheetStyle = false,
+            )
+        }
+
         OutlinedTextField(
             value = nickname,
-            onValueChange = { nickname = it },
+            onValueChange = {
+                nickname = it
+                nicknameTouched = true
+            },
             label = { Text("Никнейм") },
             placeholder = { Text("@username") },
             supportingText = {
-                Text(nicknameError ?: "Используй свой никнейм аккаунта")
+                Text(if (showNicknameError) nicknameError.orEmpty() else "Используй свой никнейм аккаунта")
             },
-            isError = nicknameError != null,
+            isError = showNicknameError,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -102,12 +129,15 @@ fun LoginScreen(
 
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = {
+                password = it
+                passwordTouched = true
+            },
             label = { Text("Пароль") },
             supportingText = {
-                Text(passwordError ?: "Минимум 8 символов")
+                Text(if (showPasswordError) passwordError.orEmpty() else "Минимум 8 символов")
             },
-            isError = passwordError != null,
+            isError = showPasswordError,
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
@@ -121,12 +151,21 @@ fun LoginScreen(
         if (state.requiresTotp) {
             OutlinedTextField(
                 value = totpCode,
-                onValueChange = { totpCode = it.filter(Char::isDigit).take(8) },
+                onValueChange = {
+                    totpCode = it.filter(Char::isDigit).take(8)
+                    totpTouched = true
+                },
                 label = { Text("Google 2FA код") },
                 supportingText = {
-                    Text(totpError ?: "Открой Google Authenticator и введи текущий код")
+                    Text(
+                        if (showTotpError) {
+                            totpError.orEmpty()
+                        } else {
+                            "Открой Google Authenticator и введи текущий код"
+                        }
+                    )
                 },
-                isError = totpError != null,
+                isError = showTotpError,
                 singleLine = true,
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth(),

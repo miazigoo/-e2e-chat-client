@@ -6,9 +6,10 @@ sealed interface ConversationRow {
     val key: String
 
     data class DateSeparator(
+        val dateKey: String,
         val label: String,
     ) : ConversationRow {
-        override val key: String = "date_$label"
+        override val key: String = "date_${dateKey}_$label"
     }
 
     data class MessageItem(

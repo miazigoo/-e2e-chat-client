@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,11 +25,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +62,7 @@ fun ConversationScreen(
         contract = ActivityResultContracts.GetContent(),
     ) { uri ->
         pendingAttachmentUri = uri
-        pendingAttachmentName = uri?.lastPathSegment ?: "attachment"
+        pendingAttachmentName = uri?.lastPathSegment
     }
 
     val conversationRows = remember(state.messages) {
@@ -97,8 +100,30 @@ fun ConversationScreen(
         }
     }
 
-    LaunchedEffect(conversationRows.size) {
-        if (conversationRows.isNotEmpty()) {
+    val lastMessageAnchor = remember(state.messages) {
+        state.messages.lastOrNull()?.let { "${it.messageId}_${it.createdAt}" }
+    }
+    var initialScrollDone by rememberSaveable { mutableStateOf(false) }
+    val isNearBottom by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val totalItems = layout.totalItemsCount
+            if (totalItems == 0) return@derivedStateOf true
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf true
+            lastVisible >= totalItems - 3
+        }
+    }
+
+    LaunchedEffect(lastMessageAnchor, conversationRows.size) {
+        if (conversationRows.isEmpty()) return@LaunchedEffect
+
+        if (!initialScrollDone) {
+            listState.scrollToItem(conversationRows.lastIndex)
+            initialScrollDone = true
+            return@LaunchedEffect
+        }
+
+        if (isNearBottom) {
             listState.animateScrollToItem(conversationRows.lastIndex)
         }
     }
@@ -157,6 +182,7 @@ fun ConversationScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 state = listState,
+                verticalArrangement = Arrangement.Bottom,
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 if (state.isLoading && state.messages.isEmpty()) {
@@ -183,6 +209,7 @@ fun ConversationScreen(
                         is ConversationRow.MessageItem -> {
                             MessageBubble(
                                 msg = row.message,
+                                forceMine = state.isSavedMessages,
                                 groupPosition = row.groupPosition,
                                 isDeleting = state.deletingMessageIds.contains(row.message.messageId),
                                 onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },

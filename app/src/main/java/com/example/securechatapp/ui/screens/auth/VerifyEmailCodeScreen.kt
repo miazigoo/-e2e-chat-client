@@ -31,8 +31,10 @@ fun VerifyEmailCodeScreen(
     onSuccess: () -> Unit,
 ) {
     var code by rememberSaveable { mutableStateOf("") }
+    var codeTouched by rememberSaveable { mutableStateOf(false) }
 
     val codeError = remember(code) { AuthInputValidator.codeError(code) }
+    val showCodeError = codeTouched && codeError != null
     val canSubmit = codeError == null && !state.isLoading
     val bottomMessages = buildList<Pair<String, Boolean>> {
         if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
@@ -62,12 +64,15 @@ fun VerifyEmailCodeScreen(
     ) {
         OutlinedTextField(
             value = code,
-            onValueChange = { code = it.filter(Char::isDigit).take(6) },
+            onValueChange = {
+                code = it.filter(Char::isDigit).take(6)
+                codeTouched = true
+            },
             label = { Text("Код подтверждения") },
             supportingText = {
-                Text(codeError ?: "Шестизначный код")
+                Text(if (showCodeError) codeError.orEmpty() else "Шестизначный код")
             },
-            isError = codeError != null,
+            isError = showCodeError,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),

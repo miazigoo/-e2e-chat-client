@@ -27,6 +27,8 @@ import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
+private const val LOGIN_RESULT_REGISTERED_NICKNAME = "login_result_registered_nickname"
+
 @Composable
 fun SecureChatNavHost(
     openConversationId: Int? = null,
@@ -123,7 +125,19 @@ fun SecureChatNavHost(
             )
         }
 
-        composable(Routes.Login) {
+        composable(Routes.Login) { backStackEntry ->
+            val registeredNickname by backStackEntry.savedStateHandle
+                .getStateFlow<String?>(LOGIN_RESULT_REGISTERED_NICKNAME, null)
+                .collectAsState()
+
+            LaunchedEffect(registeredNickname) {
+                val nickname = registeredNickname?.trim().orEmpty()
+                if (nickname.isBlank()) return@LaunchedEffect
+
+                authViewModel.showRegistrationCompleted(nickname)
+                backStackEntry.savedStateHandle[LOGIN_RESULT_REGISTERED_NICKNAME] = null
+            }
+
             LoginScreen(
                 state = authState,
                 onLogin = authViewModel::login,
@@ -146,7 +160,10 @@ fun SecureChatNavHost(
             RegisterScreen(
                 state = authState,
                 onRegister = authViewModel::register,
-                onRegisterSuccess = {
+                onRegisterSuccess = { nickname ->
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(LOGIN_RESULT_REGISTERED_NICKNAME, nickname)
                     navController.popBackStack()
                 },
                 onBack = {

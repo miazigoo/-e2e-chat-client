@@ -1,8 +1,8 @@
 package com.example.securechatapp.ui.screens.conversation
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessageSendStatus
@@ -40,6 +42,7 @@ import com.example.securechatapp.ui.theme.SecureChatTheme
 @Composable
 fun MessageBubble(
     msg: ChatMessage,
+    forceMine: Boolean = false,
     groupPosition: MessageGroupPosition,
     isDeleting: Boolean,
     onDeleteLocal: () -> Unit,
@@ -51,25 +54,26 @@ fun MessageBubble(
     onRemoveReaction: () -> Unit = {},
     onPinMessage: () -> Unit = {},
 ) {
+    val isMine = msg.isMine || forceMine
     val dark = isSystemInDarkTheme()
     val extraColors = SecureChatTheme.extras
     val bubbleColor = when {
-        msg.isMine && dark -> extraColors.outgoingBubble
-        msg.isMine && !dark -> extraColors.outgoingBubble
-        !msg.isMine && dark -> extraColors.incomingBubble
+        isMine && dark -> extraColors.outgoingBubble
+        isMine && !dark -> extraColors.outgoingBubble
+        !isMine && dark -> extraColors.incomingBubble
         else -> extraColors.incomingBubble
     }
-    val bubbleTextColor = if (msg.isMine) {
+    val bubbleTextColor = if (isMine) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val bubbleMetaColor = if (msg.isMine) {
+    val bubbleMetaColor = if (isMine) {
         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val bubbleBorder = if (msg.isMine) {
+    val bubbleBorder = if (isMine) {
         null
     } else {
         BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
@@ -101,12 +105,12 @@ fun MessageBubble(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = topPadding, bottom = bottomPadding),
-        horizontalArrangement = if (msg.isMine) Arrangement.End else Arrangement.Start,
+        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
     ) {
         Box {
             Surface(
                 shape = bubbleShape(
-                    isMine = msg.isMine,
+                    isMine = isMine,
                     groupPosition = groupPosition,
                 ),
                 color = bubbleColor,
@@ -118,8 +122,7 @@ fun MessageBubble(
                     .combinedClickable(
                         onClick = {},
                         onLongClick = { menuExpanded = true },
-                    )
-                    .animateContentSize(),
+                    ),
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -147,34 +150,28 @@ fun MessageBubble(
                     )
 
                     if (msg.reactions.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            msg.reactions.take(5).forEach { reaction ->
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (reaction.me) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    },
+                            msg.reactions.take(3).forEach { reaction ->
+                                CompactReactionChip(
+                                    text = "${reaction.reaction} ${reaction.count}",
+                                    selected = reaction.me,
                                     onClick = {
-                                        if (reaction.me) {
-                                            onRemoveReaction()
-                                        } else {
-                                            onSetReaction(reaction.reaction)
-                                        }
+                                        if (reaction.me) onRemoveReaction() else onSetReaction(reaction.reaction)
                                     },
-                                ) {
-                                    Text(
-                                        text = "${reaction.reaction} ${reaction.count}",
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = bubbleTextColor,
-                                    )
-                                }
+                                )
+                            }
+
+                            val hiddenCount = (msg.reactions.size - 3).coerceAtLeast(0)
+                            if (hiddenCount > 0) {
+                                CompactReactionChip(
+                                    text = "+$hiddenCount",
+                                    selected = false,
+                                    onClick = {},
+                                )
                             }
                         }
                     }
@@ -191,7 +188,7 @@ fun MessageBubble(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -204,12 +201,12 @@ fun MessageBubble(
                             color = bubbleMetaColor,
                         )
 
-                        if (msg.isMine) {
+                        if (isMine) {
                             Spacer(modifier = Modifier.width(6.dp))
 
                             val statusText = when (msg.sendStatus) {
-                                MessageSendStatus.SENDING -> "⏳"
-                                MessageSendStatus.FAILED -> "⚠"
+                                MessageSendStatus.SENDING -> "🕓"
+                                MessageSendStatus.FAILED -> "!"
                                 MessageSendStatus.SENT -> when {
                                     msg.readAt != null -> "✓✓"
                                     msg.deliveredAt != null -> "✓✓"
@@ -222,7 +219,9 @@ fun MessageBubble(
                                 MessageSendStatus.FAILED -> MaterialTheme.colorScheme.error
                                 MessageSendStatus.SENT -> {
                                     if (msg.readAt != null) {
-                                        bubbleTextColor
+                                        Color(0xFF4FC3F7)
+                                    } else if (msg.deliveredAt != null) {
+                                        bubbleMetaColor.copy(alpha = 0.95f)
                                     } else {
                                         bubbleMetaColor
                                     }
@@ -231,7 +230,7 @@ fun MessageBubble(
 
                             Text(
                                 text = statusText,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = statusColor,
                             )
                         }
@@ -300,7 +299,7 @@ fun MessageBubble(
                         },
                     )
 
-                    if (msg.isMine) {
+                    if (isMine) {
                         DropdownMenuItem(
                             text = { Text(if (isDeleting) "Обработка..." else "Удалить у всех") },
                             onClick = {
@@ -312,6 +311,37 @@ fun MessageBubble(
                 }
             }
         }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun CompactReactionChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val bg = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onClick,
+            )
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

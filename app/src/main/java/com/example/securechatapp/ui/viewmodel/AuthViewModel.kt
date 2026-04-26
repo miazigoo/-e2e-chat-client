@@ -73,6 +73,20 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun showRegistrationCompleted(nickname: String) {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                requiresTotp = false,
+                errorMessage = null,
+                infoMessage = "Аккаунт создан. Теперь войди.",
+                suggestedNickname = nickname,
+                debugCode = null,
+                emailMasked = null,
+            )
+        }
+    }
+
     fun register(
         nickname: String,
         password: String,
@@ -105,11 +119,7 @@ class AuthViewModel @Inject constructor(
                 )
             ) {
                 is AppResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        infoMessage = "Аккаунт создан. Теперь войди.",
-                        suggestedNickname = nickname,
-                    )
+                    showRegistrationCompleted(nickname)
                     onSuccess()
                 }
 

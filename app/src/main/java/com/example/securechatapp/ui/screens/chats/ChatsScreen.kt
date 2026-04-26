@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,6 +55,7 @@ import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import com.example.securechatapp.ui.components.BrandedEmptyState
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+import com.example.securechatapp.ui.theme.SecureChatTheme
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -66,6 +69,7 @@ fun ChatsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var search by remember { mutableStateOf("") }
+    val normalizedSearch = remember(search) { search.trim() }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -116,8 +120,9 @@ fun ChatsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Button(
-                            onClick = { viewModel.searchUsers(search.trim()) },
+                            onClick = { viewModel.searchUsers(normalizedSearch) },
                             modifier = Modifier.fillMaxWidth(),
+                            enabled = normalizedSearch.isNotEmpty() && !state.isLoading,
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
@@ -247,16 +252,21 @@ private fun ChatsTopBar(
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
 ) {
+    val extraColors = SecureChatTheme.extras
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        color = extraColors.topBar,
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 12.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BrandMark(size = 44.dp)
@@ -274,19 +284,68 @@ private fun ChatsTopBar(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                    ),
+                    modifier = Modifier.padding(top = 5.dp),
+                ) {
+                    Text(
+                        text = "🔐 End-to-End",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
             }
 
-            TextButton(onClick = onOpenSettings) {
-                Text("Настройки")
+            TopBarMiniButton(label = "⚙", onClick = onOpenSettings)
+            Spacer(modifier = Modifier.width(6.dp))
+            TopBarMiniButton(label = "↻", onClick = onRefresh)
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(enabled = !isLoggingOut, onClick = onLogout),
+            ) {
+                Text(
+                    text = if (isLoggingOut) "..." else "Выйти",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                )
             }
+        }
+    }
+}
 
-            TextButton(onClick = onRefresh) {
-                Text("Обновить")
-            }
-
-            TextButton(onClick = onLogout) {
-                Text(if (isLoggingOut) "..." else "Выйти")
-            }
+@Composable
+private fun TopBarMiniButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }

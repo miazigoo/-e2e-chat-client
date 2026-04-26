@@ -44,7 +44,9 @@ class MessageRepository @Inject constructor(
         conversationId: Int,
         peerUserId: Int,
     ): List<ChatMessage> {
-        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        val conversation = safe { api.getConversation(conversationId).data }
+        val conversationUuid = conversation.conversationUuid
+        val forceMine = conversation.isSavedMessages
 
         return safe { api.listMessages(conversationId = conversationId).data }
             .items
@@ -56,7 +58,7 @@ class MessageRepository @Inject constructor(
                     messageId = dto.messageId,
                     messageUuid = dto.messageUuid,
                     text = decoded.text,
-                    isMine = dto.senderUserId != peerUserId,
+                    isMine = forceMine || dto.senderUserId != peerUserId,
                     createdAt = dto.serverReceivedAt,
                     clientCreatedAt = dto.clientCreatedAt,
                     deliveredAt = dto.deliveredAt,
@@ -88,14 +90,21 @@ class MessageRepository @Inject constructor(
         peerUserId: Int,
         query: String,
     ): List<ChatMessage> {
-        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        val conversation = safe { api.getConversation(conversationId).data }
+        val conversationUuid = conversation.conversationUuid
+        val forceMine = conversation.isSavedMessages
         return safe {
             api.searchMessages(
                 conversationId = conversationId,
                 query = query.trim(),
             ).data
         }.items.map { dto ->
-            dto.toDomainMessage(conversationUuid, peerUserId, ::decodeEncryptedMessagePayload)
+            dto.toDomainMessage(
+                conversationUuid = conversationUuid,
+                peerUserId = peerUserId,
+                forceMine = forceMine,
+                decoder = ::decodeEncryptedMessagePayload,
+            )
         }
     }
 
@@ -104,7 +113,9 @@ class MessageRepository @Inject constructor(
         peerUserId: Int,
         tab: String,
     ): SharedMessagesPage {
-        val conversationUuid = safe { api.getConversation(conversationId).data }.conversationUuid
+        val conversation = safe { api.getConversation(conversationId).data }
+        val conversationUuid = conversation.conversationUuid
+        val forceMine = conversation.isSavedMessages
         val data = safe {
             api.listSharedMessages(
                 conversationId = conversationId,
@@ -120,7 +131,12 @@ class MessageRepository @Inject constructor(
                 files = data.counts.files,
             ),
             items = data.items.map { dto ->
-                dto.toDomainMessage(conversationUuid, peerUserId, ::decodeEncryptedMessagePayload)
+                dto.toDomainMessage(
+                    conversationUuid = conversationUuid,
+                    peerUserId = peerUserId,
+                    forceMine = forceMine,
+                    decoder = ::decodeEncryptedMessagePayload,
+                )
             },
         )
     }
@@ -439,6 +455,7 @@ class MessageRepository @Inject constructor(
 private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMessage(
     conversationUuid: String,
     peerUserId: Int,
+    forceMine: Boolean,
     decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
 ): ChatMessage {
     val decoded = decoder(conversationUuid, ciphertext, encryptionMode)
@@ -446,7 +463,7 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
         messageId = messageId,
         messageUuid = messageUuid,
         text = decoded.text,
-        isMine = senderUserId != peerUserId,
+        isMine = forceMine || senderUserId != peerUserId,
         createdAt = serverReceivedAt,
         clientCreatedAt = clientCreatedAt,
         deliveredAt = deliveredAt,

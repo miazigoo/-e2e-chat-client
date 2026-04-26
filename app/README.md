@@ -9,15 +9,13 @@
 По умолчанию debug-сборка ходит в:
 
 ```text
-http://10.0.2.2:8000/api/v1/
+https://170.168.10.207/api/v1/
 ```
-
-На Android-эмуляторе `localhost` указывает на сам эмулятор, а не на твой ПК.
 
 Переопределить можно так:
 
 ```text
-SECURE_CHAT_DEBUG_API_BASE_URL=http://10.0.2.2:8000/api/v1/
+SECURE_CHAT_DEBUG_API_BASE_URL=https://your-domain.example/api/v1/
 SECURE_CHAT_DEBUG_HTTP_LOGGING=true
 SECURE_CHAT_DEBUG_SIGNAL_PROTOCOL=false
 SECURE_CHAT_SHOW_DEBUG_AUTH_INFO=true

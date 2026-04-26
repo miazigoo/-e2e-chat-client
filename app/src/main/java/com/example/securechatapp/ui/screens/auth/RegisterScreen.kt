@@ -38,12 +38,18 @@ fun RegisterScreen(
     var password by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var email2fa by rememberSaveable { mutableStateOf(false) }
+    var nicknameTouched by rememberSaveable { mutableStateOf(false) }
+    var passwordTouched by rememberSaveable { mutableStateOf(false) }
+    var emailTouched by rememberSaveable { mutableStateOf(false) }
 
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
     val emailError = remember(email, email2fa) {
         AuthInputValidator.registrationEmailError(email, email2fa)
     }
+    val showNicknameError = nicknameTouched && nicknameError != null
+    val showPasswordError = passwordTouched && passwordError != null
+    val showEmailError = emailError != null && (emailTouched || email2fa)
     val canSubmit = nicknameError == null &&
         passwordError == null &&
         emailError == null &&
@@ -73,13 +79,16 @@ fun RegisterScreen(
     ) {
         OutlinedTextField(
             value = nickname,
-            onValueChange = { nickname = it },
+            onValueChange = {
+                nickname = it
+                nicknameTouched = true
+            },
             label = { Text("Никнейм") },
             placeholder = { Text("@username") },
             supportingText = {
-                Text(nicknameError ?: "Никнейм будет виден собеседникам")
+                Text(if (showNicknameError) nicknameError.orEmpty() else "Никнейм будет виден собеседникам")
             },
-            isError = nicknameError != null,
+            isError = showNicknameError,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -91,12 +100,15 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = {
+                password = it
+                passwordTouched = true
+            },
             label = { Text("Пароль") },
             supportingText = {
-                Text(passwordError ?: "Минимум 8 символов")
+                Text(if (showPasswordError) passwordError.orEmpty() else "Минимум 8 символов")
             },
-            isError = passwordError != null,
+            isError = showPasswordError,
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
@@ -109,18 +121,25 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = {
+                email = it
+                emailTouched = true
+            },
             label = { Text("Email") },
             supportingText = {
                 Text(
-                    emailError ?: if (email2fa) {
-                        "Email нужен для подтверждения входа кодом"
+                    if (showEmailError) {
+                        emailError.orEmpty()
                     } else {
-                        "Необязательно. Нужен для email 2FA"
+                        if (email2fa) {
+                            "Email нужен для подтверждения входа кодом"
+                        } else {
+                            "Необязательно. Нужен для email 2FA"
+                        }
                     }
                 )
             },
-            isError = emailError != null,
+            isError = showEmailError,
             singleLine = true,
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier.fillMaxWidth(),
