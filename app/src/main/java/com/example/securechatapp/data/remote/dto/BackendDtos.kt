@@ -501,6 +501,41 @@ data class SendMessageResponseDto(
     val isIdempotentReplay: Boolean = false,
 )
 
+@Serializable
+data class ForwardMessagesRequestDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    @SerialName("recipient_user_id")
+    val recipientUserId: Int,
+    @SerialName("message_ids")
+    val messageIds: List<Int>,
+    @SerialName("client_created_at")
+    val clientCreatedAt: String? = null,
+)
+
+@Serializable
+data class ForwardedMessageItemDto(
+    @SerialName("source_message_id")
+    val sourceMessageId: Int,
+    @SerialName("message_id")
+    val messageId: Int,
+    @SerialName("message_uuid")
+    val messageUuid: String,
+    @SerialName("recipient_device_id")
+    val recipientDeviceId: Int,
+    @SerialName("server_received_at")
+    val serverReceivedAt: String,
+)
+
+@Serializable
+data class ForwardMessagesResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    @SerialName("recipient_user_id")
+    val recipientUserId: Int,
+    val items: List<ForwardedMessageItemDto> = emptyList(),
+)
+
 
 @Serializable
 data class MessageReactionSummaryDto(

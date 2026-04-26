@@ -23,6 +23,17 @@ interface ConversationCacheDao {
     @Query(
         """
         SELECT * FROM conversations_cache
+        ORDER BY 
+            CASE WHEN updatedAt IS NULL THEN 1 ELSE 0 END,
+            updatedAt DESC,
+            conversationId DESC
+        """
+    )
+    suspend fun listAll(): List<ConversationCacheEntity>
+
+    @Query(
+        """
+        SELECT * FROM conversations_cache
         WHERE conversationId = :conversationId
         LIMIT 1
         """

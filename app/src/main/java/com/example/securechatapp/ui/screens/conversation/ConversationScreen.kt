@@ -1,6 +1,8 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,8 +13,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +54,7 @@ fun ConversationScreen(
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
 
     var message by remember { mutableStateOf("") }
     var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
@@ -62,7 +69,9 @@ fun ConversationScreen(
         contract = ActivityResultContracts.GetContent(),
     ) { uri ->
         pendingAttachmentUri = uri
-        pendingAttachmentName = uri?.lastPathSegment
+        pendingAttachmentName = uri?.let { selectedUri ->
+            resolveAttachmentDisplayName(context, selectedUri) ?: selectedUri.lastPathSegment
+        }
     }
 
     val conversationRows = remember(state.messages) {
@@ -232,6 +241,12 @@ fun ConversationScreen(
                                 onPinMessage = {
                                     viewModel.pinMessage(row.message.messageId)
                                 },
+                                onReplyMessage = {
+                                    viewModel.startReply(row.message)
+                                },
+                                onForwardMessage = {
+                                    viewModel.openForwardPicker(row.message)
+                                },
                             )
                         }
                     }
@@ -276,6 +291,8 @@ fun ConversationScreen(
             ConversationComposer(
                 message = message,
                 onMessageChange = { message = it },
+                replyPreview = state.replyingTo,
+                onCancelReply = viewModel::cancelReply,
                 onAttachClick = {
                     if (conversationBlockedReason == null) {
                         attachmentPicker.launch("*/*")
@@ -356,6 +373,36 @@ fun ConversationScreen(
             )
         }
 
+        if (state.forwardingMessageId != null || state.isLoadingForwardTargets) {
+            ForwardMessageDialog(
+                conversations = state.forwardTargets,
+                isLoading = state.isLoadingForwardTargets,
+                isForwarding = state.isForwardingMessage,
+                onDismiss = viewModel::dismissForwardPicker,
+                onForwardToConversation = viewModel::forwardSelectedMessage,
+            )
+        }
+
+    }
+}
+
+private fun resolveAttachmentDisplayName(
+    context: Context,
+    uri: Uri,
+): String? {
+    return context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        val columnIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (columnIndex >= 0 && cursor.moveToFirst()) {
+            cursor.getString(columnIndex)
+        } else {
+            null
+        }
     }
 }
 
@@ -396,6 +443,84 @@ private fun ConversationSkeletonState() {
     }
 }
 
+
+@Composable
+private fun ForwardMessageDialog(
+    conversations: List<com.example.securechatapp.domain.model.ConversationListItem>,
+    isLoading: Boolean,
+    isForwarding: Boolean,
+    onDismiss: () -> Unit,
+    onForwardToConversation: (Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!isForwarding) onDismiss()
+        },
+        title = {
+            Text("Переслать сообщение")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isLoading) {
+                    Text("Обновляю список чатов…")
+                }
+
+                when {
+                    conversations.isEmpty() -> {
+                        Text("Нет доступных чатов для пересылки.")
+                    }
+
+                    else -> {
+                        conversations.forEach { conversation ->
+                            Button(
+                                onClick = {
+                                    onForwardToConversation(conversation.conversationId)
+                                },
+                                enabled = !isForwarding,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = conversation.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = if (conversation.isSavedMessages) {
+                                            "Избранное"
+                                        } else {
+                                            conversation.lastMessagePreview
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isForwarding,
+            ) {
+                Text(if (isForwarding) "Пересылаю…" else "Закрыть")
+            }
+        },
+    )
+}
 
 @Composable
 private fun SharedSecretSettingsDialog(

@@ -2,8 +2,11 @@ package com.example.securechatapp.ui.screens.conversation
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,11 +17,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.theme.SecureChatTheme
 
@@ -53,6 +61,8 @@ fun MessageBubble(
     onSetReaction: (String) -> Unit = {},
     onRemoveReaction: () -> Unit = {},
     onPinMessage: () -> Unit = {},
+    onReplyMessage: () -> Unit = {},
+    onForwardMessage: () -> Unit = {},
 ) {
     val isMine = msg.isMine || forceMine
     val dark = isSystemInDarkTheme()
@@ -80,6 +90,10 @@ fun MessageBubble(
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
+    var reactionPickerExpanded by remember { mutableStateOf(false) }
+    val myReaction = remember(msg.reactions) {
+        msg.reactions.firstOrNull { it.me }?.reaction
+    }
 
     val topPadding = when (groupPosition) {
         MessageGroupPosition.SINGLE,
@@ -127,6 +141,26 @@ fun MessageBubble(
                 Column(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
+                    msg.forwardPreview?.let { preview ->
+                        MessageContextPreview(
+                            label = "↪ Переслано",
+                            preview = preview,
+                            textColor = bubbleTextColor,
+                            borderColor = bubbleMetaColor.copy(alpha = 0.35f),
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+
+                    msg.replyPreview?.let { preview ->
+                        MessageContextPreview(
+                            label = "↩ Ответ",
+                            preview = preview,
+                            textColor = bubbleTextColor,
+                            borderColor = bubbleMetaColor.copy(alpha = 0.35f),
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+
                     if (msg.hasAttachments) {
                         TextButton(
                             onClick = onAttachmentsClick,
@@ -242,12 +276,12 @@ fun MessageBubble(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
             ) {
-                listOf("👍", "❤️", "😂", "🔥", "😮", "😢").forEach { reaction ->
+                if (msg.messageId > 0) {
                     DropdownMenuItem(
-                        text = { Text("$reaction Реакция") },
+                        text = { Text("Реакции") },
                         onClick = {
                             menuExpanded = false
-                            onSetReaction(reaction)
+                            reactionPickerExpanded = true
                         },
                     )
                 }
@@ -263,6 +297,22 @@ fun MessageBubble(
                 }
 
                 if (msg.messageId > 0) {
+                    DropdownMenuItem(
+                        text = { Text("Ответить") },
+                        onClick = {
+                            menuExpanded = false
+                            onReplyMessage()
+                        },
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Переслать") },
+                        onClick = {
+                            menuExpanded = false
+                            onForwardMessage()
+                        },
+                    )
+
                     DropdownMenuItem(
                         text = { Text("Закрепить") },
                         onClick = {
@@ -310,6 +360,53 @@ fun MessageBubble(
                     }
                 }
             }
+        }
+    }
+
+    if (reactionPickerExpanded) {
+        ReactionPickerDialog(
+            currentReaction = myReaction,
+            onDismiss = { reactionPickerExpanded = false },
+            onSelectReaction = { reaction ->
+                reactionPickerExpanded = false
+                onSetReaction(reaction)
+            },
+            onRemoveReaction = {
+                reactionPickerExpanded = false
+                onRemoveReaction()
+            },
+        )
+    }
+}
+
+@Composable
+private fun MessageContextPreview(
+    label: String,
+    preview: MessagePreview,
+    textColor: Color,
+    borderColor: Color,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = textColor.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor.copy(alpha = 0.78f),
+            )
+            Text(
+                text = previewDisplayText(preview),
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.92f),
+            )
         }
     }
 }
@@ -372,4 +469,91 @@ private fun bubbleShape(
                 RoundedCornerShape(topStart = 10.dp, topEnd = 18.dp, bottomStart = 6.dp, bottomEnd = 18.dp)
         }
     }
+}
+
+private fun previewDisplayText(
+    preview: MessagePreview,
+): String {
+    return preview.text.ifBlank {
+        if (preview.hasAttachments) {
+            "Вложение"
+        } else {
+            "Сообщение"
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReactionPickerDialog(
+    currentReaction: String?,
+    onDismiss: () -> Unit,
+    onSelectReaction: (String) -> Unit,
+    onRemoveReaction: () -> Unit,
+) {
+    val reactions = remember {
+        listOf(
+            "👍", "❤️", "🔥", "😂", "😮", "😢",
+            "👏", "🎉", "🤔", "👀", "🙏", "💯",
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Реакции")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = if (currentReaction.isNullOrBlank()) {
+                        "Выбери реакцию для сообщения"
+                    } else {
+                        "Текущая реакция: $currentReaction"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    reactions.forEach { reaction ->
+                        FilterChip(
+                            selected = currentReaction == reaction,
+                            onClick = {
+                                if (currentReaction == reaction) {
+                                    onRemoveReaction()
+                                } else {
+                                    onSelectReaction(reaction)
+                                }
+                            },
+                            label = {
+                                Text(reaction)
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        },
+        dismissButton = {
+            if (!currentReaction.isNullOrBlank()) {
+                TextButton(onClick = onRemoveReaction) {
+                    Text("Убрать")
+                }
+            }
+        },
+    )
 }

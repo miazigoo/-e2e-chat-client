@@ -24,6 +24,7 @@ import com.example.securechatapp.data.repository.SyncRepository
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationEventTypes
+import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.ConversationSyncEvent
 import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
@@ -31,7 +32,9 @@ import com.example.securechatapp.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,7 +70,12 @@ data class ConversationUiState(
     val localSharedSecretFingerprint: String? = null,
     val peerSharedSecretEnabled: Boolean = false,
     val pinnedMessage: MessagePreview? = null,
+    val replyingTo: MessagePreview? = null,
     val messages: List<ChatMessage> = emptyList(),
+    val forwardingMessageId: Int? = null,
+    val forwardTargets: List<ConversationListItem> = emptyList(),
+    val isLoadingForwardTargets: Boolean = false,
+    val isForwardingMessage: Boolean = false,
     val attachmentSheetMessageId: Int? = null,
     val attachmentLocalStates: Map<Int, AttachmentLocalState> = emptyMap(),
     val selectedMessageAttachments: List<AttachmentItem> = emptyList(),
@@ -192,6 +200,7 @@ fun disableSharedSecret() {
     ) {
         val currentConversationId = _state.value.conversationId ?: return
         val peerUserId = _state.value.peerUserId ?: return
+        val replyingTo = _state.value.replyingTo
         if (text.isBlank() && attachmentUri == null) return
 
         viewModelScope.launch {
@@ -217,12 +226,15 @@ fun disableSharedSecret() {
                     conversationId = currentConversationId,
                     recipientUserId = peerUserId,
                     plainText = text,
+                    replyToMessageId = replyingTo?.messageId,
+                    replyPreview = replyingTo,
                     attachmentIds = uploadedEncryptedAttachments.map { it.attachmentId },
                     attachmentDescriptors = uploadedEncryptedAttachments.map { it.descriptor },
                 )
 
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
+                    replyingTo = null,
                 )
 
                 outboxDispatcher.drainConversation(currentConversationId)
@@ -238,6 +250,110 @@ fun disableSharedSecret() {
                 _state.value = _state.value.copy(
                     isUploadingAttachment = false,
                     error = e.message ?: "Не удалось подготовить сообщение",
+                )
+            }
+        }
+    }
+
+    fun startReply(message: ChatMessage) {
+        if (message.messageId <= 0) return
+
+        _state.value = _state.value.copy(
+            replyingTo = message.toPreview(),
+            error = null,
+            info = null,
+        )
+    }
+
+    fun cancelReply() {
+        _state.value = _state.value.copy(replyingTo = null)
+    }
+
+    fun openForwardPicker(message: ChatMessage) {
+        if (message.messageId <= 0) return
+
+        viewModelScope.launch {
+            val cachedTargets = buildForwardTargets(
+                chatCacheRepository.getCachedConversations()
+            )
+            _state.value = _state.value.copy(
+                forwardingMessageId = message.messageId,
+                forwardTargets = cachedTargets,
+                isLoadingForwardTargets = true,
+                isForwardingMessage = false,
+                error = null,
+                info = null,
+            )
+
+            runCatching {
+                conversationRepository.listConversations()
+                    .also { chatCacheRepository.replaceConversations(it) }
+            }.onSuccess { conversations ->
+                _state.value = _state.value.copy(
+                    forwardTargets = buildForwardTargets(conversations),
+                    isLoadingForwardTargets = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    forwardTargets = cachedTargets,
+                    isLoadingForwardTargets = false,
+                    error = if (cachedTargets.isEmpty()) {
+                        it.message ?: "Не удалось загрузить список чатов"
+                    } else {
+                        null
+                    },
+                    info = if (cachedTargets.isNotEmpty()) {
+                        "Не удалось обновить список чатов. Показаны локальные данные."
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+
+    fun dismissForwardPicker() {
+        _state.value = _state.value.copy(
+            forwardingMessageId = null,
+            forwardTargets = emptyList(),
+            isLoadingForwardTargets = false,
+            isForwardingMessage = false,
+        )
+    }
+
+    fun forwardSelectedMessage(targetConversationId: Int) {
+        val sourceMessageId = _state.value.forwardingMessageId ?: return
+        val targetConversation = _state.value.forwardTargets.firstOrNull {
+            it.conversationId == targetConversationId
+        } ?: return
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isForwardingMessage = true,
+                error = null,
+                info = null,
+            )
+
+            runCatching {
+                messageRepository.forwardMessages(
+                    conversationId = targetConversation.conversationId,
+                    recipientUserId = targetConversation.peerUserId,
+                    messageIds = listOf(sourceMessageId),
+                )
+            }.onSuccess {
+                dismissForwardPicker()
+                conversationsRefreshBus.requestRefresh()
+                if (targetConversation.conversationId == conversationId) {
+                    reloadMessages(
+                        markDelivered = false,
+                        markRead = false,
+                    )
+                }
+                _state.value = _state.value.copy(info = "Сообщение переслано")
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    isForwardingMessage = false,
+                    error = it.message ?: "Не удалось переслать сообщение",
                 )
             }
         }
@@ -592,7 +708,7 @@ private fun refreshSharedSecretState(
 }
 
     private fun observeCachedConversation() {
-        viewModelScope.launch {
+        launchGuarded {
             chatCacheRepository.observeConversationDetails(conversationId).collect { details ->
                 if (details != null) {
                     _state.value = _state.value.copy(
@@ -619,7 +735,7 @@ private fun refreshSharedSecretState(
     }
 
     private fun observeMergedMessages() {
-        viewModelScope.launch {
+        launchGuarded {
             combine(
                 chatCacheRepository.observeMessages(conversationId),
                 outboxRepository.observePendingMessages(conversationId),
@@ -629,15 +745,20 @@ private fun refreshSharedSecretState(
                     pendingMessages = pendingMessages,
                 )
             }.collect { merged ->
+                val pinnedPreview = hydratePreviewFromMessages(
+                    preview = _state.value.pinnedMessage,
+                    messages = merged,
+                )
                 _state.value = _state.value.copy(
                     messages = merged,
+                    pinnedMessage = pinnedPreview,
                 )
             }
         }
     }
 
     private fun observeRealtimeEvents() {
-        viewModelScope.launch {
+        launchGuarded {
             realtimeWebSocketManager.events.collect { event ->
                 when (event) {
                     is RealtimeEvent.Connected -> {
@@ -652,7 +773,7 @@ private fun refreshSharedSecretState(
 
                     is RealtimeEvent.Error -> {
                         _state.value = _state.value.copy(
-                            info = "Realtime: ${event.message}"
+                            info = event.message
                         )
                     }
 
@@ -663,7 +784,7 @@ private fun refreshSharedSecretState(
     }
 
     private fun observeAttachmentDownloadEvents() {
-        viewModelScope.launch {
+        launchGuarded {
             attachmentDownloadManager.events.collect { event: AttachmentDownloadEvent ->
                 _state.value = _state.value.copy(
                     attachmentLocalStates = _state.value.attachmentLocalStates + (
@@ -707,10 +828,71 @@ private fun refreshSharedSecretState(
         _state.value = _state.value.copy(deletingMessageIds = current)
     }
 
+    private fun buildForwardTargets(
+        conversations: List<ConversationListItem>,
+    ): List<ConversationListItem> {
+        val currentConversation = currentConversationForwardTarget()
+        return buildList {
+            addAll(
+                conversations.filter { it.isActive && !it.isPurged }
+            )
+            if (currentConversation != null) {
+                add(currentConversation)
+            }
+        }.distinctBy { it.conversationId }
+            .sortedWith(
+                compareByDescending<ConversationListItem> { it.isSavedMessages }
+                    .thenBy { it.title.lowercase() }
+            )
+    }
+
+    private fun currentConversationForwardTarget(): ConversationListItem? {
+        val currentState = _state.value
+        val currentConversationId = currentState.conversationId ?: return null
+        val currentPeerUserId = currentState.peerUserId ?: return null
+        if (currentState.isConversationPurged || !currentState.isConversationActive) {
+            return null
+        }
+
+        val title = currentState.title.ifBlank {
+            if (currentState.isSavedMessages) "Избранное" else "Диалог"
+        }
+        val peerNickname = if (currentState.isSavedMessages) {
+            "Избранное"
+        } else {
+            title
+        }
+        val lastPreview = currentState.messages.lastOrNull()?.let { message ->
+            message.text.takeIf { it.isNotBlank() }
+                ?: if (message.hasAttachments) "Вложение" else "Сообщение"
+        } ?: "Нет сообщений"
+
+        return ConversationListItem(
+            conversationId = currentConversationId,
+            conversationUuid = currentState.conversationUuid,
+            title = title,
+            isSavedMessages = currentState.isSavedMessages,
+            peerUserId = currentPeerUserId,
+            peerNickname = peerNickname,
+            unreadCount = 0,
+            lastMessagePreview = lastPreview,
+            protectionMode = currentState.protectionMode,
+            messageTtlDays = currentState.messageTtlDays,
+            deleteAfterReadSeconds = currentState.deleteAfterReadSeconds,
+            isActive = currentState.isConversationActive,
+            isPurged = currentState.isConversationPurged,
+            updatedAt = currentState.messages.lastOrNull()?.createdAt,
+            sharedSecretEnabled = currentState.sharedSecretEnabled,
+            sharedSecretFingerprint = currentState.sharedSecretFingerprint,
+            peerSharedSecretEnabled = currentState.peerSharedSecretEnabled,
+            pinnedMessage = currentState.pinnedMessage,
+        )
+    }
+
     private fun startOutboxFallback() {
         outboxFallbackJob?.cancel()
-        outboxFallbackJob = viewModelScope.launch {
-            while (isActive) {
+        outboxFallbackJob = launchGuarded {
+            while (currentCoroutineContext().isActive) {
                 outboxDispatcher.drainConversation(conversationId)
                 delay(OUTBOX_FALLBACK_INTERVAL_MS)
                 syncConversation()
@@ -953,6 +1135,30 @@ private fun refreshSharedSecretState(
         )
     }
 
+    private fun hydratePreviewFromMessages(
+        preview: MessagePreview?,
+        messages: List<ChatMessage>,
+    ): MessagePreview? {
+        if (preview == null || preview.text.isNotBlank()) {
+            return preview
+        }
+
+        val source = messages.firstOrNull { it.messageId == preview.messageId } ?: return preview
+        return source.toPreview()
+    }
+
+    private fun ChatMessage.toPreview(): MessagePreview {
+        return MessagePreview(
+            messageId = messageId,
+            messageUuid = messageUuid.orEmpty(),
+            senderUserId = if (isMine) 0 else (_state.value.peerUserId ?: 0),
+            messageType = messageType,
+            text = text.takeUnless { it == "[attachment]" }.orEmpty(),
+            hasAttachments = hasAttachments,
+            clientCreatedAt = clientCreatedAt ?: createdAt,
+        )
+    }
+
     private fun parseMillis(raw: String): Long {
         return runCatching {
             OffsetDateTime.parse(raw).toInstant().toEpochMilli()
@@ -1172,6 +1378,22 @@ private fun refreshSharedSecretState(
             encryptedAttachmentFileManager.getAttachmentState(attachment.attachmentId)
         } else {
             attachmentDownloadManager.getAttachmentState(attachment.attachmentId)
+        }
+    }
+
+    private fun launchGuarded(
+        block: suspend () -> Unit,
+    ): Job {
+        return viewModelScope.launch {
+            try {
+                block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _state.value = _state.value.copy(
+                    error = error.message ?: "Не удалось обновить чат",
+                )
+            }
         }
     }
 

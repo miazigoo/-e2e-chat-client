@@ -2,6 +2,7 @@ package com.example.securechatapp.data.repository
 
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import java.io.IOException
+import java.net.SocketTimeoutException
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -54,10 +55,21 @@ abstract class BaseApiRepository(
         } catch (e: IOException) {
             throw BackendApiException(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Network request failed",
+                message = localizeNetworkErrorMessage(e),
             )
         } catch (e: HttpException) {
             throw parseBackendApiException(json, e)
+        }
+    }
+
+    private fun localizeNetworkErrorMessage(error: IOException): String {
+        return when {
+            error is SocketTimeoutException -> "Сервер не ответил вовремя. Попробуй позже."
+            error.message.equals("Read timed out", ignoreCase = true) ->
+                "Сервер не ответил вовремя. Попробуй позже."
+            error.message.equals("timeout", ignoreCase = true) ->
+                "Сервер не ответил вовремя. Попробуй позже."
+            else -> error.message ?: "Network request failed"
         }
     }
 }

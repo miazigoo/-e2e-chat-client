@@ -29,6 +29,10 @@ class ChatCacheRepository @Inject constructor(
         }
     }
 
+    suspend fun getCachedConversations(): List<ConversationListItem> {
+        return conversationsDao.listAll().map { it.toConversationListItem() }
+    }
+
     fun observeConversationDetails(
         conversationId: Int,
     ): Flow<ConversationDetails?> {

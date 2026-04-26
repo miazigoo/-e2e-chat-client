@@ -12,6 +12,8 @@ import com.example.securechatapp.crypto.engine.nowIso
 import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
+import com.example.securechatapp.data.remote.dto.ForwardMessagesRequestDto
+import com.example.securechatapp.data.remote.dto.ForwardMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
@@ -79,8 +81,8 @@ class MessageRepository @Inject constructor(
                     },
                     replyToMessageId = dto.replyToMessageId,
                     forwardFromMessageId = dto.forwardFromMessageId,
-                    replyPreview = dto.replyPreview?.toDomain(),
-                    forwardPreview = dto.forwardPreview?.toDomain(),
+                    replyPreview = dto.replyPreview?.toDomainPreview(conversationUuid, ::decodeEncryptedMessagePayload),
+                    forwardPreview = dto.forwardPreview?.toDomainPreview(conversationUuid, ::decodeEncryptedMessagePayload),
                 )
             }
     }
@@ -193,6 +195,7 @@ class MessageRepository @Inject constructor(
         conversationId: Int,
         recipientUserId: Int,
         plainText: String,
+        replyToMessageId: Int? = null,
         attachmentIds: List<Int> = emptyList(),
         attachmentDescriptors: List<EncryptedAttachmentDescriptor> = emptyList(),
         messageUuid: String = UUID.randomUUID().toString(),
@@ -269,7 +272,25 @@ class MessageRepository @Inject constructor(
                     encryptionMode = if (sharedSecretPayload != null) "signal_plus_shared_secret" else "signal",
                     aadHash = sharedSecretPayload?.fingerprint,
                     clientCreatedAt = crypto.nowIso(),
+                    replyToMessageId = replyToMessageId,
                     attachmentIds = distinctAttachmentIds,
+                )
+            ).data
+        }
+    }
+
+    suspend fun forwardMessages(
+        conversationId: Int,
+        recipientUserId: Int,
+        messageIds: List<Int>,
+    ): ForwardMessagesResponseDto {
+        return safe {
+            api.forwardMessages(
+                ForwardMessagesRequestDto(
+                    conversationId = conversationId,
+                    recipientUserId = recipientUserId,
+                    messageIds = messageIds.distinct(),
+                    clientCreatedAt = crypto.nowIso(),
                 )
             ).data
         }
@@ -484,18 +505,26 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
         },
         replyToMessageId = replyToMessageId,
         forwardFromMessageId = forwardFromMessageId,
-        replyPreview = replyPreview?.toDomain(),
-        forwardPreview = forwardPreview?.toDomain(),
+        replyPreview = replyPreview?.toDomainPreview(conversationUuid, decoder),
+        forwardPreview = forwardPreview?.toDomainPreview(conversationUuid, decoder),
     )
 }
 
-private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(): MessagePreview {
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomainPreview(
+    conversationUuid: String,
+    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
+): MessagePreview {
+    val decoded = decoder(
+        conversationUuid,
+        ciphertext,
+        if (ciphertext.startsWith("ss1:")) "signal_plus_shared_secret" else "signal",
+    )
     return MessagePreview(
         messageId = messageId,
         messageUuid = messageUuid,
         senderUserId = senderUserId,
         messageType = messageType,
-        text = "",
+        text = decoded.text,
         hasAttachments = hasAttachments,
         clientCreatedAt = clientCreatedAt,
     )

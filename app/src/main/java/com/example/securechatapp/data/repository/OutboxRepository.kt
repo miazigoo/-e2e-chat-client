@@ -5,11 +5,14 @@ import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.crypto.engine.nowIso
 import com.example.securechatapp.data.local.db.SecureChatDatabase
+import com.example.securechatapp.data.local.db.decodeMessagePreviewJson
 import com.example.securechatapp.data.local.db.decodeAttachmentsJson
+import com.example.securechatapp.data.local.db.encodeMessagePreviewJson
 import com.example.securechatapp.data.local.db.encodeAttachmentsJson
 import com.example.securechatapp.data.local.entity.PendingMessageOutboxEntity
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
 import java.util.UUID
 import javax.inject.Inject
@@ -26,6 +29,8 @@ data class PendingOutgoingMessage(
     val recipientUserId: Int,
     val clientMessageUuid: String,
     val plainText: String,
+    val replyToMessageId: Int?,
+    val replyPreview: MessagePreview?,
     val attachmentIds: List<Int>,
     val attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     val createdAt: String,
@@ -54,6 +59,8 @@ class OutboxRepository @Inject constructor(
         conversationId: Int,
         recipientUserId: Int,
         plainText: String,
+        replyToMessageId: Int?,
+        replyPreview: MessagePreview?,
         attachmentIds: List<Int>,
         attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     ): Int {
@@ -71,6 +78,8 @@ class OutboxRepository @Inject constructor(
             recipientUserId = recipientUserId,
             clientMessageUuid = clientMessageUuid,
             plainText = plainText,
+            replyToMessageId = replyToMessageId,
+            replyPreviewJson = encodeMessagePreviewJson(replyPreview),
             attachmentIdsCsv = attachmentIds.distinct().joinToString(","),
             attachmentDescriptorsJson = encodeAttachmentDescriptors(attachmentDescriptors),
             attachmentPreviewJson = encodeAttachmentsJson(
@@ -237,6 +246,8 @@ class OutboxRepository @Inject constructor(
             recipientUserId = recipientUserId,
             clientMessageUuid = clientMessageUuid,
             plainText = plainText,
+            replyToMessageId = replyToMessageId,
+            replyPreview = decodeMessagePreviewJson(replyPreviewJson),
             attachmentIds = attachmentIdsCsv
                 .split(",")
                 .mapNotNull { it.trim().takeIf(String::isNotBlank)?.toIntOrNull() },
@@ -269,6 +280,8 @@ class OutboxRepository @Inject constructor(
             deliveredAt = null,
             readAt = null,
             hasAttachments = hasAttachments,
+            replyToMessageId = replyToMessageId,
+            replyPreview = decodeMessagePreviewJson(replyPreviewJson),
             attachmentIds = attachmentIds,
             attachments = attachments,
             sendStatus = status.toMessageSendStatus(),

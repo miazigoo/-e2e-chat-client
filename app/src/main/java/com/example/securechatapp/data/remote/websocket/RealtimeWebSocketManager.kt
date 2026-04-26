@@ -2,7 +2,10 @@ package com.example.securechatapp.data.remote.websocket
 
 import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
+import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.domain.model.AppReleaseInfo
+import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +41,7 @@ sealed interface RealtimeEvent {
         val release: AppReleaseInfo,
     ) : RealtimeEvent
     data class Error(
+        val statusCode: Int? = null,
         val code: String? = null,
         val message: String,
     ) : RealtimeEvent
@@ -47,6 +51,7 @@ sealed interface RealtimeEvent {
 class RealtimeWebSocketManager @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val sessionLocalDataSource: SecureSessionLocalDataSource,
+    private val sessionRepository: SessionRepository,
     private val json: Json,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,6 +60,7 @@ class RealtimeWebSocketManager @Inject constructor(
     private var webSocket: WebSocket? = null
     private var isConnected: Boolean = false
     private var keepAliveJob: Job? = null
+    private var shouldProbeHttpSession: Boolean = false
 
     private val subscribedConversationIds = linkedSetOf<Int>()
 
@@ -62,6 +68,14 @@ class RealtimeWebSocketManager @Inject constructor(
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
 
     suspend fun connectIfNeeded(): Boolean {
+        stateMutex.withLock {
+            if (webSocket != null) return true
+        }
+
+        if (consumeHttpSessionProbe()) {
+            runCatching { sessionRepository.heartbeat() }
+        }
+
         val session = sessionLocalDataSource.getSessionSnapshot()
         val accessToken = session.accessToken?.takeIf { it.isNotBlank() } ?: return false
         val deviceUuid = session.deviceUuid?.takeIf { it.isNotBlank() } ?: return false
@@ -113,10 +127,18 @@ class RealtimeWebSocketManager @Inject constructor(
                     response: okhttp3.Response?,
                 ) {
                     scope.launch {
+                        val statusCode = response?.code
+                        if (statusCode == 401 || statusCode == 403) {
+                            markShouldProbeHttpSession()
+                        }
                         handleSocketClosed(webSocket)
                         _events.emit(
                             RealtimeEvent.Error(
-                                message = t.message ?: "WebSocket failure"
+                                statusCode = statusCode,
+                                message = buildFailureMessage(
+                                    throwable = t,
+                                    statusCode = statusCode,
+                                ),
                             )
                         )
                         _events.emit(RealtimeEvent.Disconnected)
@@ -187,6 +209,7 @@ class RealtimeWebSocketManager @Inject constructor(
         stateMutex.withLock {
             if (webSocket !== openedSocket) return
             isConnected = true
+            shouldProbeHttpSession = false
             startKeepAliveLocked()
         }
     }
@@ -311,6 +334,38 @@ class RealtimeWebSocketManager @Inject constructor(
             httpBase.startsWith("https://") -> httpBase.replaceFirst("https://", "wss://") + "/ws"
             httpBase.startsWith("http://") -> httpBase.replaceFirst("http://", "ws://") + "/ws"
             else -> error("Unsupported API_BASE_URL: $httpBase")
+        }
+    }
+
+    private suspend fun consumeHttpSessionProbe(): Boolean {
+        return stateMutex.withLock {
+            val current = shouldProbeHttpSession
+            shouldProbeHttpSession = false
+            current
+        }
+    }
+
+    private suspend fun markShouldProbeHttpSession() {
+        stateMutex.withLock {
+            shouldProbeHttpSession = true
+        }
+    }
+
+    private fun buildFailureMessage(
+        throwable: Throwable,
+        statusCode: Int?,
+    ): String {
+        return when {
+            statusCode == 401 ->
+                "Realtime недоступен: сессия истекла, перепроверяю авторизацию."
+            statusCode == 403 ->
+                "Realtime недоступен: сервер отклонил websocket-сессию. Перепроверяю привязку устройства."
+            throwable is SocketTimeoutException ->
+                "Realtime недоступен: сервер не завершил подключение вовремя."
+            throwable is IOException && throwable.message.equals("Read timed out", ignoreCase = true) ->
+                "Realtime недоступен: сервер не завершил подключение вовремя."
+            else -> throwable.message?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: "Realtime connection failed"
         }
     }
 

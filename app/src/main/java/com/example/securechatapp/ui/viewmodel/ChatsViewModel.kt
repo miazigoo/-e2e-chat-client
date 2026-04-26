@@ -210,7 +210,7 @@ class ChatsViewModel @Inject constructor(
 
                     is RealtimeEvent.Error -> {
                         _state.value = _state.value.copy(
-                            info = "Realtime: ${event.message}"
+                            info = event.message
                         )
                     }
 

@@ -115,6 +115,10 @@ fun MessageCacheEntity.toDomain(
         deliveredAt = deliveredAt,
         readAt = readAt,
         hasAttachments = hasAttachments,
+        replyToMessageId = replyToMessageId,
+        forwardFromMessageId = forwardFromMessageId,
+        replyPreview = decodeMessagePreviewJson(replyPreviewJson),
+        forwardPreview = decodeMessagePreviewJson(forwardPreviewJson),
         attachmentIds = attachmentIdsCsv
             .split(",")
             .mapNotNull { it.trim().takeIf(String::isNotBlank)?.toIntOrNull() },
@@ -145,6 +149,10 @@ fun ChatMessage.toEntity(
         deliveredAt = deliveredAt,
         readAt = readAt,
         hasAttachments = hasAttachments,
+        replyToMessageId = replyToMessageId,
+        forwardFromMessageId = forwardFromMessageId,
+        replyPreviewJson = encodeMessagePreviewJson(replyPreview),
+        forwardPreviewJson = encodeMessagePreviewJson(forwardPreview),
         attachmentIdsCsv = attachmentIds.joinToString(","),
         attachmentsJson = encodeAttachmentsJson(
             json = json,
@@ -202,13 +210,13 @@ fun decodeReactionsJson(
     }.getOrDefault(emptyList())
 }
 
-private fun encodeMessagePreviewJson(
+fun encodeMessagePreviewJson(
     preview: MessagePreview?,
 ): String? {
     return preview?.let { Json.encodeToString(MessagePreview.serializer(), it) }
 }
 
-private fun decodeMessagePreviewJson(
+fun decodeMessagePreviewJson(
     raw: String?,
 ): MessagePreview? {
     if (raw.isNullOrBlank()) return null

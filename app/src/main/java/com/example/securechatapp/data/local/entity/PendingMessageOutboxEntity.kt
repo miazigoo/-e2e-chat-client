@@ -20,6 +20,8 @@ data class PendingMessageOutboxEntity(
     val recipientUserId: Int,
     val clientMessageUuid: String,
     val plainText: String,
+    val replyToMessageId: Int? = null,
+    val replyPreviewJson: String? = null,
     val attachmentIdsCsv: String = "",
     val attachmentDescriptorsJson: String = "[]",
     val attachmentPreviewJson: String = "[]",

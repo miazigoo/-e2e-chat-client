@@ -53,6 +53,7 @@ class OutboxDispatcher @Inject constructor(
                 conversationId = pending.conversationId,
                 recipientUserId = pending.recipientUserId,
                 plainText = pending.plainText,
+                replyToMessageId = pending.replyToMessageId,
                 attachmentIds = pending.attachmentIds,
                 attachmentDescriptors = pending.attachmentDescriptors,
                 messageUuid = pending.clientMessageUuid,

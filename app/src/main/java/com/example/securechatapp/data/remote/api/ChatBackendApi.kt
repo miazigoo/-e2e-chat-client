@@ -14,6 +14,8 @@ import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessageReactionResponseDto
 import com.example.securechatapp.data.remote.dto.DeviceHeartbeatResponseDto
+import com.example.securechatapp.data.remote.dto.ForwardMessagesRequestDto
+import com.example.securechatapp.data.remote.dto.ForwardMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.GetConversationResponseDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsResponseDto
@@ -171,6 +173,11 @@ interface ChatBackendApi {
     suspend fun sendMessage(
         @Body body: SendMessageRequestDto,
     ): ApiEnvelopeDto<SendMessageResponseDto>
+
+    @POST("messages/forward")
+    suspend fun forwardMessages(
+        @Body body: ForwardMessagesRequestDto,
+    ): ApiEnvelopeDto<ForwardMessagesResponseDto>
 
     @POST("messages/{messageId}/delivered")
     suspend fun markDelivered(
