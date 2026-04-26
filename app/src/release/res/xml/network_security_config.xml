@@ -1,2 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<network-security-config />
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">170.168.10.207</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/caddy_root_ca" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

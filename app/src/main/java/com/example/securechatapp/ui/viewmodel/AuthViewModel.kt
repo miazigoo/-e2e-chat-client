@@ -19,6 +19,7 @@ data class AuthUiState(
     val requiresTotp: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
+    val suggestedNickname: String? = null,
     val debugCode: String? = null,
     val emailMasked: String? = null,
 )
@@ -32,6 +33,20 @@ class AuthViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
     private var hadAuthorizedSession = false
+
+    fun clearTransientState(keepSuggestedNickname: Boolean = true) {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                requiresTotp = false,
+                errorMessage = null,
+                infoMessage = null,
+                suggestedNickname = if (keepSuggestedNickname) it.suggestedNickname else null,
+                debugCode = null,
+                emailMasked = null,
+            )
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -47,6 +62,7 @@ class AuthViewModel @Inject constructor(
                             it.infoMessage
                         },
                         errorMessage = if (sessionExpired) null else it.errorMessage,
+                        suggestedNickname = if (sessionExpired) null else it.suggestedNickname,
                         debugCode = if (sessionExpired) null else it.debugCode,
                         emailMasked = if (sessionExpired) null else it.emailMasked,
                         requiresTotp = if (sessionExpired) false else it.requiresTotp,
@@ -64,13 +80,22 @@ class AuthViewModel @Inject constructor(
         email2faEnabled: Boolean,
         onSuccess: () -> Unit,
     ) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null,
-                infoMessage = null,
-            )
+        var started = false
+        _uiState.update { state ->
+            if (state.isLoading) {
+                state
+            } else {
+                started = true
+                state.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    infoMessage = null,
+                )
+            }
+        }
+        if (!started) return
 
+        viewModelScope.launch {
             when (
                 val result = authRepository.register(
                     nickname = nickname,
@@ -83,6 +108,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         infoMessage = "Аккаунт создан. Теперь войди.",
+                        suggestedNickname = nickname,
                     )
                     onSuccess()
                 }
@@ -109,16 +135,26 @@ class AuthViewModel @Inject constructor(
         onNeedVerifyCode: (String) -> Unit,
         onSuccess: () -> Unit,
     ) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null,
-                infoMessage = null,
-                debugCode = null,
-                emailMasked = null,
-                requiresTotp = false,
-            )
+        var started = false
+        _uiState.update { state ->
+            if (state.isLoading) {
+                state
+            } else {
+                started = true
+                state.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    infoMessage = null,
+                    debugCode = null,
+                    emailMasked = null,
+                    requiresTotp = false,
+                    suggestedNickname = state.suggestedNickname,
+                )
+            }
+        }
+        if (!started) return
 
+        viewModelScope.launch {
             val deviceUuid = sessionLocalDataSource.getOrCreateDeviceUuid()
 
             when (
@@ -138,6 +174,7 @@ class AuthViewModel @Inject constructor(
                         emailMasked = data.emailMasked,
                         isAuthorized = !data.accessToken.isNullOrBlank(),
                         requiresTotp = data.requiresTotp,
+                        suggestedNickname = _uiState.value.suggestedNickname,
                         infoMessage = if (data.requiresTotp) {
                             "Введите код из Google Authenticator"
                         } else {
@@ -172,13 +209,22 @@ class AuthViewModel @Inject constructor(
         code: String,
         onSuccess: () -> Unit,
     ) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null,
-                infoMessage = null,
-            )
+        var started = false
+        _uiState.update { state ->
+            if (state.isLoading) {
+                state
+            } else {
+                started = true
+                state.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    infoMessage = null,
+                )
+            }
+        }
+        if (!started) return
 
+        viewModelScope.launch {
             val deviceUuid = sessionLocalDataSource.getOrCreateDeviceUuid()
 
             when (
@@ -194,6 +240,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isAuthorized = authorized,
+                        suggestedNickname = if (authorized) null else _uiState.value.suggestedNickname,
                         infoMessage = if (!authorized && result.data.requiresBootstrap) {
                             "Устройство зарегистрировано. Повтори вход."
                         } else {

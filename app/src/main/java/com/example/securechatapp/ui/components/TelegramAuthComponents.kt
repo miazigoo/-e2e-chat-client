@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -19,12 +22,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun TelegramAuthScaffold(
     title: String,
     subtitle: String,
+    bottomOverlay: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
@@ -71,6 +76,21 @@ fun TelegramAuthScaffold(
                 )
             }
         }
+
+        bottomOverlay?.let { overlay ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 18.dp,
+                    )
+                    .clip(RoundedCornerShape(22.dp)),
+            ) {
+                overlay()
+            }
+        }
     }
 }
 
@@ -78,29 +98,51 @@ fun TelegramAuthScaffold(
 fun TelegramStatusCard(
     text: String,
     isError: Boolean = false,
+    bottomSheetStyle: Boolean = false,
 ) {
     val background = if (isError) {
-        MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
+        if (bottomSheetStyle) {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
+        } else {
+            MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
+        }
     } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        if (bottomSheetStyle) {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        }
     }
 
     val contentColor = if (isError) {
-        MaterialTheme.colorScheme.error
+        if (bottomSheetStyle) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.error
+        }
     } else {
-        MaterialTheme.colorScheme.primary
+        if (bottomSheetStyle) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
     }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        modifier = if (bottomSheetStyle) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(if (bottomSheetStyle) 22.dp else 18.dp),
         color = background,
+        tonalElevation = if (bottomSheetStyle) 6.dp else 0.dp,
+        shadowElevation = if (bottomSheetStyle) 8.dp else 0.dp,
     ) {
         Text(
             text = text,
             color = contentColor,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(
+                horizontal = if (bottomSheetStyle) 16.dp else 14.dp,
+                vertical = if (bottomSheetStyle) 14.dp else 12.dp,
+            ),
         )
     }
 }

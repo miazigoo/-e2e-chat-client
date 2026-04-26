@@ -14,6 +14,8 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -84,10 +86,10 @@ class AuthRepositoryImplTest {
         assertEquals("refresh-token", result.data.refreshToken)
         coVerify(exactly = 2) { authApi.login(any()) }
         coVerify(exactly = 1) { authApi.bootstrap("Bearer bootstrap-token", any()) }
-        coVerify(exactly = 1) {
+        verify(exactly = 1) {
             sessionLocalDataSource.saveDeviceUuid(deviceUuid)
         }
-        coVerify(exactly = 1) {
+        verify(exactly = 1) {
             sessionLocalDataSource.saveFullSession(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -117,7 +119,7 @@ class AuthRepositoryImplTest {
 
         require(result is AppResult.Success)
         assertEquals("access-token", result.data.accessToken)
-        coVerify(exactly = 1) {
+        verify(exactly = 1) {
             sessionLocalDataSource.saveFullSession(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -168,8 +170,8 @@ class AuthRepositoryImplTest {
         assertEquals("access-token", result.data.accessToken)
         coVerify(exactly = 2) { authApi.verifyEmailCode(any()) }
         coVerify(exactly = 1) { authApi.bootstrap("Bearer bootstrap-token", any()) }
-        coVerify(exactly = 1) { sessionLocalDataSource.saveDeviceUuid(deviceUuid) }
-        coVerify(exactly = 1) {
+        verify(exactly = 1) { sessionLocalDataSource.saveDeviceUuid(deviceUuid) }
+        verify(exactly = 1) {
             sessionLocalDataSource.saveFullSession(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -284,8 +286,43 @@ class AuthRepositoryImplTest {
         )
 
         require(result is AppResult.Error)
-        assertEquals("NETWORK_ERROR", result.code)
+        assertEquals("UNEXPECTED_ERROR", result.code)
         assertEquals("network down", result.message)
+    }
+
+    @Test
+    fun `register returns network error on io exception`() = runTest {
+        coEvery { authApi.register(any()) } coAnswers { throw IOException("timeout") }
+
+        val result = repository.register(
+            nickname = "@alice",
+            password = "password123",
+            email = null,
+            email2faEnabled = false,
+        )
+
+        require(result is AppResult.Error)
+        assertEquals("NETWORK_ERROR", result.code)
+        assertEquals("timeout", result.message)
+    }
+
+    @Test
+    fun `login includes raw backend body when error envelope is malformed`() = runTest {
+        coEvery { authApi.login(any()) } throws httpException(
+            code = 502,
+            body = """{"message":"gateway exploded"}""",
+        )
+
+        val result = repository.login(
+            nickname = "@alice",
+            password = "password123",
+            deviceUuid = "device-uuid",
+        )
+
+        require(result is AppResult.Error)
+        assertEquals("HTTP_502", result.code)
+        assertTrue(result.message.contains("HTTP 502"))
+        assertTrue(result.message.contains("gateway exploded"))
     }
 
     private fun bootstrapMaterial() = SignalBootstrapKeyMaterial(

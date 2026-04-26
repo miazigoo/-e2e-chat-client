@@ -2,6 +2,8 @@ package com.example.securechatapp.ui.screens.auth
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,9 +35,12 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNeedVerifyCode: (String) -> Unit,
 ) {
-    var nickname by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var totpCode by rememberSaveable { mutableStateOf("") }
+    val initialNickname = state.suggestedNickname
+    var nickname by rememberSaveable(initialNickname) {
+        mutableStateOf(initialNickname.orEmpty())
+    }
+    var password by rememberSaveable(initialNickname) { mutableStateOf("") }
+    var totpCode by rememberSaveable(initialNickname) { mutableStateOf("") }
 
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
@@ -51,9 +56,31 @@ fun LoginScreen(
             totpError == null &&
             !state.isLoading
 
+    val bottomMessages = buildList<Pair<String, Boolean>> {
+        state.errorMessage?.let { add(it to true) }
+        state.infoMessage?.let { add(it to false) }
+        state.emailMasked?.let { add("Код отправлен на $it" to false) }
+        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
+            state.debugCode?.let { add("DEBUG CODE: $it" to false) }
+        }
+    }
+
     TelegramAuthScaffold(
         title = "Secure Chat",
         subtitle = "Войдите в защищённый чат",
+        bottomOverlay = bottomMessages.takeIf { it.isNotEmpty() }?.let { messages ->
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    messages.forEach { (text, isError) ->
+                        TelegramStatusCard(
+                            text = text,
+                            isError = isError,
+                            bottomSheetStyle = true,
+                        )
+                    }
+                }
+            }
+        },
     ) {
         OutlinedTextField(
             value = nickname,
@@ -113,24 +140,6 @@ fun LoginScreen(
             )
         }
 
-        state.errorMessage?.let {
-            TelegramStatusCard(text = it, isError = true)
-        }
-
-        state.infoMessage?.let {
-            TelegramStatusCard(text = it)
-        }
-
-        state.emailMasked?.let {
-            TelegramStatusCard(text = "Код отправлен на $it")
-        }
-
-        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
-            state.debugCode?.let {
-                TelegramStatusCard(text = "DEBUG CODE: $it")
-            }
-        }
-
         Button(
             onClick = {
                 onLogin(
@@ -165,6 +174,7 @@ fun LoginScreen(
         TextButton(
             onClick = onOpenRegister,
             modifier = Modifier.fillMaxWidth(),
+            enabled = !state.isLoading,
         ) {
             Text("Создать аккаунт")
         }

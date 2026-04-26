@@ -7,9 +7,9 @@ import org.junit.Test
 class AuthInputValidatorTest {
 
     @Test
-    fun `normalizeNickname trims and prepends at sign`() {
-        assertEquals("@alice", AuthInputValidator.normalizeNickname("  alice  "))
-        assertEquals("@bob", AuthInputValidator.normalizeNickname("@bob"))
+    fun `normalizeNickname trims and strips optional at sign`() {
+        assertEquals("alice", AuthInputValidator.normalizeNickname("  alice  "))
+        assertEquals("bob", AuthInputValidator.normalizeNickname("@bob"))
     }
 
     @Test
@@ -24,6 +24,20 @@ class AuthInputValidatorTest {
     fun `emailError allows blank email and validates malformed values`() {
         assertNull(AuthInputValidator.emailError("   "))
         assertEquals("Введите корректный email", AuthInputValidator.emailError("wrong-email"))
+    }
+
+    @Test
+    fun `registrationEmailError requires email when email 2fa is enabled`() {
+        assertEquals(
+            "Укажите email, если включаете email 2FA",
+            AuthInputValidator.registrationEmailError("   ", email2faEnabled = true),
+        )
+        assertNull(
+            AuthInputValidator.registrationEmailError(
+                "user@example.com",
+                email2faEnabled = true,
+            )
+        )
     }
 
     @Test

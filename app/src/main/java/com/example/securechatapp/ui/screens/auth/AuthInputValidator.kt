@@ -9,7 +9,7 @@ object AuthInputValidator {
     fun normalizeNickname(value: String): String {
         val trimmed = value.trim()
         if (trimmed.isBlank()) return trimmed
-        return if (trimmed.startsWith("@")) trimmed else "@$trimmed"
+        return trimmed.removePrefix("@")
     }
 
     fun nicknameError(value: String): String? {
@@ -32,6 +32,14 @@ object AuthInputValidator {
         if (trimmed.isBlank()) return null
         if (!emailRegex.matches(trimmed)) return "Введите корректный email"
         return null
+    }
+
+    fun registrationEmailError(value: String, email2faEnabled: Boolean): String? {
+        val trimmed = value.trim()
+        if (email2faEnabled && trimmed.isBlank()) {
+            return "Укажите email, если включаете email 2FA"
+        }
+        return emailError(trimmed)
     }
 
     fun codeError(value: String): String? {

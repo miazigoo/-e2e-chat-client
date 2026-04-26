@@ -2,6 +2,8 @@ package com.example.securechatapp.ui.screens.auth
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,7 +31,7 @@ import com.example.securechatapp.ui.viewmodel.AuthUiState
 fun RegisterScreen(
     state: AuthUiState,
     onRegister: (String, String, String?, Boolean, () -> Unit) -> Unit,
-    onRegisterSuccess: () -> Unit,
+    onRegisterSuccess: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     var nickname by rememberSaveable { mutableStateOf("") }
@@ -39,15 +41,35 @@ fun RegisterScreen(
 
     val nicknameError = remember(nickname) { AuthInputValidator.nicknameError(nickname) }
     val passwordError = remember(password) { AuthInputValidator.passwordError(password) }
-    val emailError = remember(email) { AuthInputValidator.emailError(email) }
+    val emailError = remember(email, email2fa) {
+        AuthInputValidator.registrationEmailError(email, email2fa)
+    }
     val canSubmit = nicknameError == null &&
         passwordError == null &&
         emailError == null &&
         !state.isLoading
 
+    val bottomMessages = buildList<Pair<String, Boolean>> {
+        state.errorMessage?.takeIf { it.isNotBlank() }?.let { add(it to true) }
+        state.infoMessage?.takeIf { it.isNotBlank() }?.let { add(it to false) }
+    }
+
     TelegramAuthScaffold(
         title = "Создать аккаунт",
         subtitle = "Новый пользователь Secure Chat",
+        bottomOverlay = bottomMessages.takeIf { it.isNotEmpty() }?.let { messages ->
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    messages.forEach { (text, isError) ->
+                        TelegramStatusCard(
+                            text = text,
+                            isError = isError,
+                            bottomSheetStyle = true,
+                        )
+                    }
+                }
+            }
+        },
     ) {
         OutlinedTextField(
             value = nickname,
@@ -90,7 +112,13 @@ fun RegisterScreen(
             onValueChange = { email = it },
             label = { Text("Email") },
             supportingText = {
-                Text(emailError ?: "Необязательно. Нужен для email 2FA")
+                Text(
+                    emailError ?: if (email2fa) {
+                        "Email нужен для подтверждения входа кодом"
+                    } else {
+                        "Необязательно. Нужен для email 2FA"
+                    }
+                )
             },
             isError = emailError != null,
             singleLine = true,
@@ -119,22 +147,15 @@ fun RegisterScreen(
             )
         }
 
-        state.errorMessage?.let {
-            TelegramStatusCard(text = it, isError = true)
-        }
-
-        state.infoMessage?.let {
-            TelegramStatusCard(text = it)
-        }
-
         Button(
             onClick = {
+                val normalizedNickname = AuthInputValidator.normalizeNickname(nickname)
                 onRegister(
-                    AuthInputValidator.normalizeNickname(nickname),
+                    normalizedNickname,
                     password,
                     email.trim().ifBlank { null },
                     email2fa,
-                    onRegisterSuccess,
+                    { onRegisterSuccess(normalizedNickname) },
                 )
             },
             modifier = Modifier.fillMaxWidth(),
@@ -151,6 +172,7 @@ fun RegisterScreen(
         TextButton(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth(),
+            enabled = !state.isLoading,
         ) {
             Text("У меня уже есть аккаунт")
         }

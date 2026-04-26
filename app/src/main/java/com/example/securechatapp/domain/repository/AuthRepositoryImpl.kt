@@ -1,11 +1,12 @@
 package com.example.securechatapp.data.repository
 
 import android.os.Build
-import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
+import android.util.Log
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.crypto.signal.SignalBootstrapKeyMaterialProvider
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
+import com.example.securechatapp.data.repository.parseBackendApiException
 import com.example.securechatapp.data.remote.dto.auth.BootstrapDeviceRequestDto
 import com.example.securechatapp.data.remote.dto.auth.Google2FAConfirmRequestDto
 import com.example.securechatapp.data.remote.dto.auth.LoginRequestDto
@@ -18,6 +19,7 @@ import com.example.securechatapp.domain.model.LoginResult
 import com.example.securechatapp.domain.model.RegisterResult
 import com.example.securechatapp.domain.model.VerifyEmailCodeResult
 import com.example.securechatapp.domain.repository.AuthRepository
+import java.io.IOException
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
@@ -30,6 +32,8 @@ class AuthRepositoryImpl @Inject constructor(
     private val json: Json,
 ) : AuthRepository {
 
+    private val logTag = "AuthRepository"
+
     override suspend fun register(
         nickname: String,
         password: String,
@@ -37,6 +41,7 @@ class AuthRepositoryImpl @Inject constructor(
         email2faEnabled: Boolean,
     ): AppResult<RegisterResult> {
         return try {
+            debugLog("register: sending auth/register for $nickname")
             val response = authApi.register(
                 RegisterRequestDto(
                     nickname = nickname,
@@ -46,29 +51,47 @@ class AuthRepositoryImpl @Inject constructor(
                 )
             )
 
+            debugLog("register: auth/register completed, resolving device UUID")
             val deviceUuid = sessionLocalDataSource.getOrCreateDeviceUuid()
+            debugLog(
+                "register: device UUID ready, bootstrap token present=${!response.data.bootstrapToken.isNullOrBlank()}",
+            )
             response.data.bootstrapToken?.takeIf { it.isNotBlank() }?.let { token ->
+                debugLog("register: starting auth/bootstrap")
                 bootstrapDevice(
                     bootstrapToken = token,
                     deviceUuid = deviceUuid,
                 )
+                debugLog("register: auth/bootstrap completed")
             }
 
+            debugLog("register: building success result")
             AppResult.Success(
                 RegisterResult(
                     userId = response.data.userId,
-                    nickname = response.data.nickname,
+                    nickname = response.data.nickname.ifBlank { nickname },
                     requiresDeviceRegistration = response.data.requiresDeviceRegistration,
                     bootstrapToken = response.data.bootstrapToken,
                     bootstrapExpiresIn = response.data.bootstrapExpiresIn,
                 )
             )
         } catch (e: HttpException) {
+            errorLog("register HTTP failure", e)
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            errorLog("register network failure", e)
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            errorLog(
+                "register unexpected failure: ${e::class.java.name}: ${e.message.orEmpty()}",
+                e,
+            )
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -133,10 +156,15 @@ class AuthRepositoryImpl @Inject constructor(
             error("Unreachable login bootstrap state")
         } catch (e: HttpException) {
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -154,10 +182,15 @@ class AuthRepositoryImpl @Inject constructor(
             )
         } catch (e: HttpException) {
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -175,10 +208,15 @@ class AuthRepositoryImpl @Inject constructor(
             )
         } catch (e: HttpException) {
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -194,10 +232,15 @@ class AuthRepositoryImpl @Inject constructor(
             )
         } catch (e: HttpException) {
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -255,10 +298,15 @@ class AuthRepositoryImpl @Inject constructor(
             error("Unreachable verifyEmailCode bootstrap state")
         } catch (e: HttpException) {
             parseHttpError(e)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             AppResult.Error(
                 code = "NETWORK_ERROR",
-                message = e.message ?: "Unknown network error",
+                message = normalizeErrorMessage(e.message, "Network request failed"),
+            )
+        } catch (e: Exception) {
+            AppResult.Error(
+                code = "UNEXPECTED_ERROR",
+                message = normalizeErrorMessage(e.message, "Unexpected request failure"),
             )
         }
     }
@@ -268,10 +316,15 @@ class AuthRepositoryImpl @Inject constructor(
         deviceUuid: String,
     ) {
         val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        debugLog("bootstrapDevice: requesting Signal bootstrap material")
         val signalMaterial = signalBootstrapKeyMaterialProvider.getOrCreateBootstrapMaterial(
             oneTimePreKeyCount = 100,
         )
+        debugLog(
+            "bootstrapDevice: material ready registrationId=${signalMaterial.registrationId} preKeys=${signalMaterial.oneTimePreKeys.size}",
+        )
 
+        debugLog("bootstrapDevice: sending auth/bootstrap")
         authApi.bootstrap(
             authorization = "Bearer $bootstrapToken",
             body = BootstrapDeviceRequestDto(
@@ -288,8 +341,11 @@ class AuthRepositoryImpl @Inject constructor(
                 oneTimePrekeys = signalMaterial.oneTimePreKeys,
             )
         )
+        debugLog("bootstrapDevice: auth/bootstrap returned successfully")
 
+        debugLog("bootstrapDevice: saving device UUID")
         sessionLocalDataSource.saveDeviceUuid(deviceUuid)
+        debugLog("bootstrapDevice: device UUID saved")
     }
 
     private suspend fun maybeBootstrapDevice(
@@ -340,18 +396,24 @@ class AuthRepositoryImpl @Inject constructor(
 
 
     private fun parseHttpError(e: HttpException): AppResult.Error {
-        val raw = e.response()?.errorBody()?.string()
-        val parsed = raw?.let {
-            runCatching {
-                json.decodeFromString(ApiErrorEnvelopeDto.serializer(), it)
-            }.getOrNull()
-        }
+        val backendError = parseBackendApiException(json, e)
 
         return AppResult.Error(
-            code = parsed?.error?.code ?: "HTTP_${e.code()}",
-            message = parsed?.error?.message ?: (e.message() ?: "HTTP ${e.code()}"),
-            statusCode = e.code(),
+            code = backendError.code,
+            message = normalizeErrorMessage(backendError.message, "HTTP ${e.code()}"),
+            statusCode = backendError.statusCode,
         )
+    }
+
+    private fun normalizeErrorMessage(message: String?, fallback: String): String =
+        message?.trim().takeUnless { it.isNullOrEmpty() } ?: fallback
+
+    private fun debugLog(message: String) {
+        runCatching { Log.d(logTag, message) }
+    }
+
+    private fun errorLog(message: String, throwable: Throwable) {
+        runCatching { Log.e(logTag, message, throwable) }
     }
 
     private sealed interface BootstrapResult {

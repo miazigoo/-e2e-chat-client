@@ -1,6 +1,8 @@
 package com.example.securechatapp.ui.screens.auth
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,26 +34,32 @@ fun VerifyEmailCodeScreen(
 
     val codeError = remember(code) { AuthInputValidator.codeError(code) }
     val canSubmit = codeError == null && !state.isLoading
+    val bottomMessages = buildList<Pair<String, Boolean>> {
+        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
+            add("Challenge: $challengeId" to false)
+            state.debugCode?.let { add("DEBUG CODE: $it" to false) }
+        }
+        state.infoMessage?.let { add(it to false) }
+        state.errorMessage?.let { add(it to true) }
+    }
 
     TelegramAuthScaffold(
         title = "Подтверждение входа",
         subtitle = "Введите код из письма",
-    ) {
-        if (BuildConfig.SHOW_DEBUG_AUTH_INFO) {
-            TelegramStatusCard(text = "Challenge: $challengeId")
-            state.debugCode?.let {
-                TelegramStatusCard(text = "DEBUG CODE: $it")
+        bottomOverlay = bottomMessages.takeIf { it.isNotEmpty() }?.let { messages ->
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    messages.forEach { (text, isError) ->
+                        TelegramStatusCard(
+                            text = text,
+                            isError = isError,
+                            bottomSheetStyle = true,
+                        )
+                    }
+                }
             }
-        }
-
-        state.infoMessage?.let {
-            TelegramStatusCard(text = it)
-        }
-
-        state.errorMessage?.let {
-            TelegramStatusCard(text = it, isError = true)
-        }
-
+        },
+    ) {
         OutlinedTextField(
             value = code,
             onValueChange = { code = it.filter(Char::isDigit).take(6) },

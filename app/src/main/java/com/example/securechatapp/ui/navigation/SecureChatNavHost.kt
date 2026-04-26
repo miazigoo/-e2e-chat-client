@@ -127,7 +127,10 @@ fun SecureChatNavHost(
             LoginScreen(
                 state = authState,
                 onLogin = authViewModel::login,
-                onOpenRegister = { navController.navigate(Routes.Register) },
+                onOpenRegister = {
+                    authViewModel.clearTransientState(keepSuggestedNickname = false)
+                    navController.navigate(Routes.Register)
+                },
                 onLoginSuccess = {
                     navController.navigate(Routes.Chats) {
                         popUpTo(Routes.Login) { inclusive = true }
@@ -144,12 +147,12 @@ fun SecureChatNavHost(
                 state = authState,
                 onRegister = authViewModel::register,
                 onRegisterSuccess = {
-                    navController.navigate(Routes.Login) {
-                        popUpTo(Routes.Register) { inclusive = true }
-                        launchSingleTop = true
-                    }
+                    navController.popBackStack()
                 },
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    authViewModel.clearTransientState(keepSuggestedNickname = false)
+                    navController.popBackStack()
+                },
             )
         }
 

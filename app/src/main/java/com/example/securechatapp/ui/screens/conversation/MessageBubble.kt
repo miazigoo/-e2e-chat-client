@@ -1,6 +1,7 @@
 package com.example.securechatapp.ui.screens.conversation
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessageSendStatus
@@ -55,6 +58,21 @@ fun MessageBubble(
         msg.isMine && !dark -> extraColors.outgoingBubble
         !msg.isMine && dark -> extraColors.incomingBubble
         else -> extraColors.incomingBubble
+    }
+    val bubbleTextColor = if (msg.isMine) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val bubbleMetaColor = if (msg.isMine) {
+        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val bubbleBorder = if (msg.isMine) {
+        null
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -85,19 +103,18 @@ fun MessageBubble(
             .padding(top = topPadding, bottom = bottomPadding),
         horizontalArrangement = if (msg.isMine) Arrangement.End else Arrangement.Start,
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(0.82f),
-        ) {
+        Box {
             Surface(
                 shape = bubbleShape(
                     isMine = msg.isMine,
                     groupPosition = groupPosition,
                 ),
                 color = bubbleColor,
+                border = bubbleBorder,
                 tonalElevation = 1.dp,
                 shadowElevation = 2.dp,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .widthIn(max = 320.dp)
                     .combinedClickable(
                         onClick = {},
                         onLongClick = { menuExpanded = true },
@@ -115,7 +132,8 @@ fun MessageBubble(
                             Text(
                                 text = "📎 Открыть вложения",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = bubbleTextColor,
+                                modifier = Modifier.alpha(0.9f),
                             )
                         }
 
@@ -125,7 +143,7 @@ fun MessageBubble(
                     Text(
                         text = bodyText,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = bubbleTextColor,
                     )
 
                     if (msg.reactions.isNotEmpty()) {
@@ -154,7 +172,7 @@ fun MessageBubble(
                                         text = "${reaction.reaction} ${reaction.count}",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = bubbleTextColor,
                                     )
                                 }
                             }
@@ -183,7 +201,7 @@ fun MessageBubble(
                         Text(
                             text = formatMessageTime(msg.createdAt),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = bubbleMetaColor,
                         )
 
                         if (msg.isMine) {
@@ -204,9 +222,9 @@ fun MessageBubble(
                                 MessageSendStatus.FAILED -> MaterialTheme.colorScheme.error
                                 MessageSendStatus.SENT -> {
                                     if (msg.readAt != null) {
-                                        MaterialTheme.colorScheme.primary
+                                        bubbleTextColor
                                     } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                        bubbleMetaColor
                                     }
                                 }
                             }

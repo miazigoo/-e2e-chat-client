@@ -27,6 +27,7 @@ val releaseHttpLoggingEnabled = projectPropertyOrEnv("SECURE_CHAT_RELEASE_HTTP_L
 val debugSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_DEBUG_SIGNAL_PROTOCOL", "false").toBoolean()
 val releaseSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_RELEASE_SIGNAL_PROTOCOL", "false").toBoolean()
 val debugAuthHintsVisible = projectPropertyOrEnv("SECURE_CHAT_SHOW_DEBUG_AUTH_INFO", "true").toBoolean()
+val releaseUseDebugSigning = projectPropertyOrEnv("SECURE_CHAT_RELEASE_USE_DEBUG_SIGNING", "false").toBoolean()
 
 android {
     namespace = "com.example.securechatapp"
@@ -60,6 +61,9 @@ android {
             buildConfigField("boolean", "ENABLE_HTTP_LOGGING", releaseHttpLoggingEnabled.toString())
             buildConfigField("boolean", "ENABLE_SIGNAL_PROTOCOL", releaseSignalProtocolEnabled.toString())
             buildConfigField("boolean", "SHOW_DEBUG_AUTH_INFO", "false")
+            if (releaseUseDebugSigning) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

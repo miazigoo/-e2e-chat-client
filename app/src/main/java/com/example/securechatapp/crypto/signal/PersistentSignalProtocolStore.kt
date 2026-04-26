@@ -3,6 +3,7 @@ package com.example.securechatapp.crypto.signal
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,6 +22,8 @@ class PersistentSignalProtocolStore @Inject constructor(
     @ApplicationContext context: Context,
 ) : SignalProtocolStore {
 
+    private val logTag = "SignalStore"
+
     private val preferences: SharedPreferences = context.getSharedPreferences(
         "signal_protocol_store_v1",
         Context.MODE_PRIVATE,
@@ -29,13 +32,26 @@ class PersistentSignalProtocolStore @Inject constructor(
     override fun getIdentityKeyPair(): IdentityKeyPair {
         val encoded = preferences.getString(KEY_IDENTITY_PAIR, null)
         if (!encoded.isNullOrBlank()) {
-            return IdentityKeyPair(decode(encoded))
+            return runCatching {
+                IdentityKeyPair(decode(encoded))
+            }.getOrElse { error ->
+                Log.e(logTag, "Failed to read persisted identity key pair, resetting Signal state", error)
+                resetSignalState()
+                generateAndPersistIdentityKeyPair()
+            }
         }
 
+        return generateAndPersistIdentityKeyPair()
+    }
+
+    private fun generateAndPersistIdentityKeyPair(): IdentityKeyPair {
+        Log.d(logTag, "Generating new Signal identity key pair")
         val identityKeyPair = KeyHelper.generateIdentityKeyPair()
+        Log.d(logTag, "Signal identity key pair generated, persisting")
         preferences.edit()
             .putString(KEY_IDENTITY_PAIR, encode(identityKeyPair.serialize()))
             .apply()
+        Log.d(logTag, "Signal identity key pair persisted")
         return identityKeyPair
     }
 
@@ -43,10 +59,12 @@ class PersistentSignalProtocolStore @Inject constructor(
         val existing = preferences.getInt(KEY_REGISTRATION_ID, 0)
         if (existing > 0) return existing
 
+        Log.d(logTag, "Generating new Signal registration id")
         val registrationId = KeyHelper.generateRegistrationId(false)
         preferences.edit()
             .putInt(KEY_REGISTRATION_ID, registrationId)
             .apply()
+        Log.d(logTag, "Signal registration id persisted: $registrationId")
         return registrationId
     }
 
@@ -145,8 +163,16 @@ class PersistentSignalProtocolStore @Inject constructor(
     override fun loadSignedPreKeys(): MutableList<SignedPreKeyRecord> =
         preferences.all
             .filterKeys { it.startsWith(KEY_SIGNED_PREKEY_PREFIX) }
-            .values
-            .mapNotNull { value -> (value as? String)?.let { SignedPreKeyRecord(decode(it)) } }
+            .mapNotNull { (key, value) ->
+                (value as? String)?.let {
+                    runCatching { SignedPreKeyRecord(decode(it)) }
+                        .onFailure { error ->
+                            Log.e(logTag, "Dropping unreadable signed pre-key entry: $key", error)
+                            preferences.edit().remove(key).apply()
+                        }
+                        .getOrNull()
+                }
+            }
             .toMutableList()
 
     override fun storeSignedPreKey(
@@ -186,6 +212,24 @@ class PersistentSignalProtocolStore @Inject constructor(
 
     private fun decode(value: String): ByteArray =
         Base64.decode(value, Base64.NO_WRAP)
+
+    fun resetSignalState() {
+        val editor = preferences.edit()
+        preferences.all.keys.forEach { key ->
+            if (
+                key == KEY_IDENTITY_PAIR ||
+                key == KEY_REGISTRATION_ID ||
+                key == KEY_CURRENT_SIGNED_PREKEY_ID ||
+                key.startsWith(KEY_IDENTITY_PREFIX) ||
+                key.startsWith(KEY_SESSION_PREFIX) ||
+                key.startsWith(KEY_PREKEY_PREFIX) ||
+                key.startsWith(KEY_SIGNED_PREKEY_PREFIX)
+            ) {
+                editor.remove(key)
+            }
+        }
+        editor.apply()
+    }
 
     private companion object {
         const val KEY_IDENTITY_PAIR = "identity_pair"

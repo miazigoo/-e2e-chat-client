@@ -23,11 +23,14 @@ fun parseBackendApiException(
     }
 
     val code = parsed?.error?.code ?: "HTTP_${exception.code()}"
+    val fallbackMessage = "HTTP ${exception.code()}"
+    val retrofitMessage = exception.response()?.message()
+        ?.takeUnless { it.isBlank() || it == "Response.error()" }
     val message = buildString {
         append(
-            parsed?.error?.message ?: exception.message().orEmpty().ifBlank {
-                "HTTP ${exception.code()}"
-            }
+            parsed?.error?.message
+                ?: retrofitMessage
+                ?: fallbackMessage
         )
         if (!body.isNullOrBlank() && parsed == null) {
             append(": ")

@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Signal protocol classes can fail in release when constructors or native-facing
+# types are renamed/optimized away. Keep the full Whispersystems surface intact.
+-keep class org.whispersystems.** { *; }
+-dontwarn org.whispersystems.**

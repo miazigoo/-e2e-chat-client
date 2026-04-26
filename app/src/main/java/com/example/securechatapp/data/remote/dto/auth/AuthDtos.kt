@@ -15,10 +15,10 @@ data class RegisterRequestDto(
 @Serializable
 data class RegisterResponseDto(
     @SerialName("user_id")
-    val userId: Int,
-    val nickname: String,
+    val userId: Int = 0,
+    val nickname: String = "",
     @SerialName("requires_device_registration")
-    val requiresDeviceRegistration: Boolean,
+    val requiresDeviceRegistration: Boolean = false,
     @SerialName("bootstrap_token")
     val bootstrapToken: String? = null,
     @SerialName("bootstrap_expires_in")
