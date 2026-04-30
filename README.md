@@ -36,13 +36,19 @@ Android client for an end-to-end encrypted chat backend with:
 
 ## Local Run
 
-Debug build uses this base URL by default:
+Debug and release URLs are configured outside git. Create a local env file:
 
-```text
-https://170.168.10.207/api/v1/
+```bash
+cp .env.local.example .env.local
 ```
 
-Use `SECURE_CHAT_DEBUG_API_BASE_URL` to point to your own HTTPS backend.
+Set at least:
+
+```text
+SECURE_CHAT_DEBUG_API_BASE_URL=https://your-dev-domain.example/api/v1/
+```
+
+Gradle reads `.env.local`, Gradle properties, and shell environment variables.
 
 ### Build debug
 

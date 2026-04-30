@@ -3,16 +3,17 @@
 Основное описание проекта и инструкции для GitHub находятся в корневом [README.md](../README.md).
 
 Приложение читает адрес API и флаги debug/release из Gradle properties или переменных окружения.
+Локально удобнее использовать игнорируемый `.env.local` в корне репозитория.
 
 ### Debug
 
-По умолчанию debug-сборка ходит в:
+Скопируйте шаблон:
 
-```text
-https://170.168.10.207/api/v1/
+```bash
+cp .env.local.example .env.local
 ```
 
-Переопределить можно так:
+И заполните:
 
 ```text
 SECURE_CHAT_DEBUG_API_BASE_URL=https://your-domain.example/api/v1/

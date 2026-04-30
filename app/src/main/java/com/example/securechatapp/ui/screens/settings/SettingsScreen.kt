@@ -1,9 +1,9 @@
 package com.example.securechatapp.ui.screens.settings
 
 import android.content.Intent
+import android.app.Activity
+import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,9 +56,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.ui.picker.SystemDocumentPickerActivity
+import com.example.securechatapp.ui.picker.SystemDocumentPickerBus
 import com.example.securechatapp.ui.theme.ThemePalette
 import com.example.securechatapp.ui.theme.themePaletteBundle
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -70,17 +73,20 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val activity = context as? Activity
 
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showLogoutAllConfirm by remember { mutableStateOf(false) }
     var showRevokeConfirm by remember { mutableStateOf(false) }
     var google2faCode by remember { mutableStateOf("") }
 
-    val avatarPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        if (uri != null) {
-            viewModel.uploadAvatar(uri)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        SystemDocumentPickerBus.results.collectLatest { result ->
+            if (result.requestKey != SystemDocumentPickerActivity.REQUEST_AVATAR) {
+                return@collectLatest
+            }
+
+            result.uris.firstOrNull()?.let(Uri::parse)?.let(viewModel::uploadAvatar)
         }
     }
 
@@ -133,7 +139,18 @@ fun SettingsScreen(
                     publicId = state.publicId,
                     avatarUpdatedAt = state.avatarUpdatedAt,
                     isUploading = state.isUploadingAvatar,
-                    onUpload = { avatarPicker.launch("image/*") },
+                    onUpload = {
+                        if (activity != null) {
+                            activity.startActivity(
+                                SystemDocumentPickerActivity.createIntent(
+                                    activity = activity,
+                                    mimeTypes = arrayOf("image/*"),
+                                    allowMultiple = false,
+                                    requestKey = SystemDocumentPickerActivity.REQUEST_AVATAR,
+                                )
+                            )
+                        }
+                    },
                     onDelete = viewModel::deleteAvatar,
                 )
 

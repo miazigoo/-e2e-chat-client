@@ -1,10 +1,13 @@
 package com.example.securechatapp.ui.screens.conversation
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -31,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,11 +46,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.theme.SecureChatTheme
+import com.example.securechatapp.ui.viewmodel.InlineAttachmentPreviewUi
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -52,10 +63,14 @@ fun MessageBubble(
     msg: ChatMessage,
     forceMine: Boolean = false,
     groupPosition: MessageGroupPosition,
+    isHighlighted: Boolean = false,
     isDeleting: Boolean,
     onDeleteLocal: () -> Unit,
     onDeleteGlobal: () -> Unit,
     onAttachmentsClick: () -> Unit,
+    inlineAttachmentPreviews: Map<Int, InlineAttachmentPreviewUi> = emptyMap(),
+    onRequestInlineImagePreview: (AttachmentItem) -> Unit = {},
+    onInlineImageClick: (AttachmentItem) -> Unit = {},
     onRetrySend: () -> Unit = {},
     onRemovePending: () -> Unit = {},
     onSetReaction: (String) -> Unit = {},
@@ -83,10 +98,10 @@ fun MessageBubble(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val bubbleBorder = if (isMine) {
-        null
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    val bubbleBorder = when {
+        isHighlighted -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+        isMine -> null
+        else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -113,6 +128,22 @@ fun MessageBubble(
         "Вложение"
     } else {
         msg.text
+    }
+    val imageAttachments = remember(msg.attachments) {
+        msg.attachments.filter { it.isImage }
+    }
+    val nonImageAttachmentCount = remember(msg.attachments) {
+        msg.attachments.count { !it.isImage }
+    }
+    val shouldShowAttachmentButton = msg.hasAttachments && (
+            imageAttachments.isEmpty() || nonImageAttachmentCount > 0
+            )
+    val shouldShowBodyText = bodyText.isNotBlank() && !(
+            bodyText == "Вложение" && imageAttachments.isNotEmpty()
+            )
+
+    LaunchedEffect(imageAttachments) {
+        imageAttachments.forEach(onRequestInlineImagePreview)
     }
 
     Row(
@@ -161,7 +192,16 @@ fun MessageBubble(
                         Spacer(modifier = Modifier.height(6.dp))
                     }
 
-                    if (msg.hasAttachments) {
+                    if (imageAttachments.isNotEmpty()) {
+                        InlineImageAttachmentsBlock(
+                            attachments = imageAttachments,
+                            previews = inlineAttachmentPreviews,
+                            onImageClick = onInlineImageClick,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    if (shouldShowAttachmentButton) {
                         TextButton(
                             onClick = onAttachmentsClick,
                             contentPadding = PaddingValues(0.dp),
@@ -177,11 +217,13 @@ fun MessageBubble(
                         Spacer(modifier = Modifier.height(2.dp))
                     }
 
-                    Text(
-                        text = bodyText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = bubbleTextColor,
-                    )
+                    if (shouldShowBodyText) {
+                        Text(
+                            text = bodyText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = bubbleTextColor,
+                        )
+                    }
 
                     if (msg.reactions.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -376,6 +418,104 @@ fun MessageBubble(
                 onRemoveReaction()
             },
         )
+    }
+}
+
+@Composable
+private fun InlineImageAttachmentsBlock(
+    attachments: List<AttachmentItem>,
+    previews: Map<Int, InlineAttachmentPreviewUi>,
+    onImageClick: (AttachmentItem) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        attachments.forEach { attachment ->
+            val preview = previews[attachment.attachmentId]
+            InlineImageAttachmentCard(
+                attachment = attachment,
+                preview = preview,
+                onClick = { onImageClick(attachment) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun InlineImageAttachmentCard(
+    attachment: AttachmentItem,
+    preview: InlineAttachmentPreviewUi?,
+    onClick: () -> Unit,
+) {
+    val imageBitmap = remember(preview?.imageBytes) {
+        preview?.imageBytes?.let { bytes ->
+            runCatching {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    ?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(176.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                imageBitmap != null -> {
+                    Image(
+                        bitmap = imageBitmap,
+                        contentDescription = attachment.fileName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+
+                !preview?.imageUrl.isNullOrBlank() -> {
+                    AsyncImage(
+                        model = preview?.imageUrl,
+                        contentDescription = attachment.fileName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+
+                preview?.hasError == true -> {
+                    Text(
+                        text = "Не удалось загрузить превью",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                else -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = if (preview?.isLoading == true) {
+                                "Загружаем изображение..."
+                            } else {
+                                "Готовим превью..."
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

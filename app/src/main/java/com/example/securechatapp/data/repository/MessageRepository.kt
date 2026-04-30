@@ -42,49 +42,68 @@ class MessageRepository @Inject constructor(
 
     private val jsonParser = json
 
+    data class MessageWindowPage(
+        val messages: List<ChatMessage>,
+        val anchorMessageId: Int? = null,
+        val beforeId: Int? = null,
+        val beforeCursor: String? = null,
+        val afterId: Int? = null,
+        val afterCursor: String? = null,
+    )
+
     suspend fun listMessages(
         conversationId: Int,
         peerUserId: Int,
     ): List<ChatMessage> {
+        return listMessageWindow(
+            conversationId = conversationId,
+            peerUserId = peerUserId,
+        ).messages
+    }
+
+    suspend fun listMessageWindow(
+        conversationId: Int,
+        peerUserId: Int,
+        anchorId: Int? = null,
+        beforeId: Int? = null,
+        beforeCursor: String? = null,
+        afterId: Int? = null,
+        afterCursor: String? = null,
+        limit: Int = 100,
+    ): MessageWindowPage {
         val conversation = safe { api.getConversation(conversationId).data }
         val conversationUuid = conversation.conversationUuid
         val forceMine = conversation.isSavedMessages
 
-        return safe { api.listMessages(conversationId = conversationId).data }
-            .items
-            .sortedBy { it.messageId }
-            .map { dto ->
-                val decoded = decodeEncryptedMessagePayload(conversationUuid = conversationUuid, ciphertext = dto.ciphertext, encryptionMode = dto.encryptionMode)
+        val response = safe {
+            api.listMessages(
+                conversationId = conversationId,
+                anchorId = anchorId,
+                beforeId = beforeId,
+                beforeCursor = beforeCursor,
+                afterId = afterId,
+                afterCursor = afterCursor,
+                limit = limit,
+            ).data
+        }
 
-                ChatMessage(
-                    messageId = dto.messageId,
-                    messageUuid = dto.messageUuid,
-                    text = decoded.text,
-                    isMine = forceMine || dto.senderUserId != peerUserId,
-                    createdAt = dto.serverReceivedAt,
-                    clientCreatedAt = dto.clientCreatedAt,
-                    deliveredAt = dto.deliveredAt,
-                    readAt = dto.readAt,
-                    expiresAt = dto.expiresAt,
-                    messageType = dto.messageType,
-                    hasAttachments = dto.hasAttachments || decoded.attachments.isNotEmpty(),
-                    attachmentIds = decoded.attachments.map { it.attachmentId }.distinct(),
-                    attachments = decoded.attachments,
-                    sendStatus = MessageSendStatus.SENT,
-                    errorMessage = null,
-                    reactions = dto.reactions.map { reaction ->
-                        MessageReactionSummary(
-                            reaction = reaction.reaction,
-                            count = reaction.count,
-                            me = reaction.me,
-                        )
-                    },
-                    replyToMessageId = dto.replyToMessageId,
-                    forwardFromMessageId = dto.forwardFromMessageId,
-                    replyPreview = dto.replyPreview?.toDomainPreview(conversationUuid, ::decodeEncryptedMessagePayload),
-                    forwardPreview = dto.forwardPreview?.toDomainPreview(conversationUuid, ::decodeEncryptedMessagePayload),
-                )
-            }
+        return MessageWindowPage(
+            messages = response.items
+                .sortedBy { it.messageId }
+                .map { dto ->
+                    dto.toDomainMessage(
+                        conversationUuid = conversationUuid,
+                        peerUserId = peerUserId,
+                        forceMine = forceMine,
+                        decoder = ::decodeEncryptedMessagePayload,
+                    )
+                },
+            anchorMessageId = response.anchorMessageId,
+            beforeId = response.beforeId,
+            beforeCursor = response.beforeCursor,
+            afterId = response.afterId,
+            afterCursor = response.afterCursor,
+        )
     }
 
     suspend fun searchMessages(

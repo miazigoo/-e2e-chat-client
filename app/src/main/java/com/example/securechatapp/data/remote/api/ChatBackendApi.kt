@@ -150,7 +150,11 @@ interface ChatBackendApi {
     @GET("messages/conversations/{conversationId}")
     suspend fun listMessages(
         @Path("conversationId") conversationId: Int,
+        @Query("id") anchorId: Int? = null,
         @Query("before_id") beforeId: Int? = null,
+        @Query("before_cursor") beforeCursor: String? = null,
+        @Query("after_id") afterId: Int? = null,
+        @Query("after_cursor") afterCursor: String? = null,
         @Query("limit") limit: Int = 100,
     ): ApiEnvelopeDto<ListMessagesResponseDto>
 

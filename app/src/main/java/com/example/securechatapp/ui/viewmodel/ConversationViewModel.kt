@@ -52,6 +52,8 @@ data class ConversationUiState(
     val isLoading: Boolean = false,
     val isLoggingOut: Boolean = false,
     val isUploadingAttachment: Boolean = false,
+    val isLoadingOlderMessages: Boolean = false,
+    val isLoadingNewerMessages: Boolean = false,
     val deletingMessageIds: Set<Int> = emptySet(),
     val error: String? = null,
     val info: String? = null,
@@ -81,13 +83,28 @@ data class ConversationUiState(
     val selectedMessageAttachments: List<AttachmentItem> = emptyList(),
     val isLoadingAttachments: Boolean = false,
     val downloadingAttachmentId: Int? = null,
+    val inlineAttachmentPreviews: Map<Int, InlineAttachmentPreviewUi> = emptyMap(),
     val imagePreviewAttachmentId: Int? = null,
     val imagePreviewUrl: String? = null,
     val imagePreviewBytes: ByteArray? = null,
     val imagePreviewFileName: String? = null,
     val imagePreviewAttachment: AttachmentItem? = null,
     val isLoadingImagePreview: Boolean = false,
+    val anchoredMessageId: Int? = null,
+    val scrollToMessageId: Int? = null,
 )
+
+data class InlineAttachmentPreviewUi(
+    val imageUrl: String? = null,
+    val imageBytes: ByteArray? = null,
+    val isLoading: Boolean = false,
+    val hasError: Boolean = false,
+)
+
+private enum class MessageViewportMode {
+    LATEST,
+    ANCHORED,
+}
 
 @HiltViewModel
 class ConversationViewModel @Inject constructor(
@@ -119,6 +136,12 @@ class ConversationViewModel @Inject constructor(
 
     private var outboxFallbackJob: Job? = null
     private val syncMutex = Mutex()
+    private var messageViewportMode = MessageViewportMode.LATEST
+    private var beforeBoundaryId: Int? = null
+    private var beforeCursor: String? = null
+    private var afterBoundaryId: Int? = null
+    private var afterCursor: String? = null
+    private val inlinePreviewJobs = mutableMapOf<Int, Job>()
 
     init {
         observeCachedConversation()
@@ -195,28 +218,26 @@ fun disableSharedSecret() {
 
     fun sendMessage(
         text: String,
-        attachmentUri: Uri? = null,
+        attachmentUris: List<Uri> = emptyList(),
         onSent: () -> Unit = {},
     ) {
         val currentConversationId = _state.value.conversationId ?: return
         val peerUserId = _state.value.peerUserId ?: return
         val replyingTo = _state.value.replyingTo
-        if (text.isBlank() && attachmentUri == null) return
+        if (text.isBlank() && attachmentUris.isEmpty()) return
 
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 error = null,
                 info = null,
-                isUploadingAttachment = attachmentUri != null,
+                isUploadingAttachment = attachmentUris.isNotEmpty(),
             )
 
             try {
-                val uploadedEncryptedAttachments = if (attachmentUri != null) {
-                    listOf(
-                        attachmentUploadManager.uploadSingleEncryptedAttachment(
-                            conversationId = currentConversationId,
-                            uri = attachmentUri,
-                        )
+                val uploadedEncryptedAttachments = if (attachmentUris.isNotEmpty()) {
+                    attachmentUploadManager.uploadEncryptedAttachments(
+                        conversationId = currentConversationId,
+                        uris = attachmentUris,
                     )
                 } else {
                     emptyList()
@@ -453,6 +474,206 @@ fun disableSharedSecret() {
                 _state.value = _state.value.copy(error = it.message ?: "Не удалось снять закреп")
             }
         }
+    }
+
+    fun openPinnedMessageWindow() {
+        val currentConversationId = _state.value.conversationId ?: return
+        val peerUserId = _state.value.peerUserId ?: return
+        val pinnedMessageId = _state.value.pinnedMessage?.messageId ?: return
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isLoading = true,
+                error = null,
+                info = null,
+            )
+
+            runCatching {
+                val page = messageRepository.listMessageWindow(
+                    conversationId = currentConversationId,
+                    peerUserId = peerUserId,
+                    anchorId = pinnedMessageId,
+                )
+                messageViewportMode = MessageViewportMode.ANCHORED
+                val anchorMessageId = page.anchorMessageId ?: pinnedMessageId
+                applyWindowMetadata(page, anchorMessageId = anchorMessageId, requestScroll = true)
+                chatCacheRepository.replaceMessages(
+                    conversationId = currentConversationId,
+                    messages = page.messages,
+                )
+                markMessagesAroundViewport(page.messages)
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = it.message ?: "Не удалось открыть закреплённое сообщение",
+                )
+            }
+        }
+    }
+
+    fun loadOlderMessages() {
+        if (messageViewportMode != MessageViewportMode.ANCHORED) return
+        if (_state.value.isLoadingOlderMessages) return
+        val currentConversationId = _state.value.conversationId ?: return
+        val peerUserId = _state.value.peerUserId ?: return
+        val requestBeforeId = beforeBoundaryId ?: return
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingOlderMessages = true)
+
+            runCatching {
+                val page = messageRepository.listMessageWindow(
+                    conversationId = currentConversationId,
+                    peerUserId = peerUserId,
+                    beforeId = requestBeforeId,
+                    beforeCursor = beforeCursor,
+                )
+                val merged = mergeMessagesForViewport(
+                    existing = _state.value.messages,
+                    incoming = page.messages,
+                )
+                applyWindowMetadata(
+                    page = page,
+                    anchorMessageId = _state.value.anchoredMessageId,
+                    requestScroll = false,
+                )
+                chatCacheRepository.replaceMessages(
+                    conversationId = currentConversationId,
+                    messages = merged,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось загрузить предыдущие сообщения",
+                )
+            }
+
+            _state.value = _state.value.copy(isLoadingOlderMessages = false)
+        }
+    }
+
+    fun loadNewerMessages() {
+        if (messageViewportMode != MessageViewportMode.ANCHORED) return
+        if (_state.value.isLoadingNewerMessages) return
+        val currentConversationId = _state.value.conversationId ?: return
+        val peerUserId = _state.value.peerUserId ?: return
+        val requestAfterId = afterBoundaryId ?: return
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingNewerMessages = true)
+
+            runCatching {
+                val page = messageRepository.listMessageWindow(
+                    conversationId = currentConversationId,
+                    peerUserId = peerUserId,
+                    afterId = requestAfterId,
+                    afterCursor = afterCursor,
+                )
+                val merged = mergeMessagesForViewport(
+                    existing = _state.value.messages,
+                    incoming = page.messages,
+                )
+                applyWindowMetadata(
+                    page = page,
+                    anchorMessageId = _state.value.anchoredMessageId,
+                    requestScroll = false,
+                )
+                chatCacheRepository.replaceMessages(
+                    conversationId = currentConversationId,
+                    messages = merged,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось загрузить новые сообщения",
+                )
+            }
+
+            _state.value = _state.value.copy(isLoadingNewerMessages = false)
+        }
+    }
+
+    fun onScrollToMessageHandled() {
+        _state.value = _state.value.copy(scrollToMessageId = null)
+    }
+
+    fun dismissError(expected: String? = null) {
+        val current = _state.value.error ?: return
+        if (expected != null && current != expected) return
+        _state.value = _state.value.copy(error = null)
+    }
+
+    fun dismissInfo(expected: String? = null) {
+        val current = _state.value.info ?: return
+        if (expected != null && current != expected) return
+        _state.value = _state.value.copy(info = null)
+    }
+
+    fun ensureInlineImagePreview(
+        attachment: AttachmentItem,
+    ) {
+        if (!attachment.isImage) return
+
+        val attachmentId = attachment.attachmentId
+        val currentPreview = _state.value.inlineAttachmentPreviews[attachmentId]
+        if (
+            currentPreview?.isLoading == true ||
+            currentPreview?.imageBytes != null ||
+            !currentPreview?.imageUrl.isNullOrBlank() ||
+            currentPreview?.hasError == true ||
+            inlinePreviewJobs.containsKey(attachmentId)
+        ) {
+            return
+        }
+
+        _state.value = _state.value.copy(
+            inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                    attachmentId to InlineAttachmentPreviewUi(isLoading = true)
+                    )
+        )
+
+        inlinePreviewJobs[attachmentId] = viewModelScope.launch {
+            runCatching {
+                if (attachment.hasEncryptedBlobKeys) {
+                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachmentId)
+                        ?: error("Вложение больше недоступно на сервере")
+
+                    InlineAttachmentPreviewUi(
+                        imageBytes = encryptedAttachmentFileManager.downloadAndDecryptBytes(
+                            downloadUrl = downloadInfo.downloadUrl,
+                            blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
+                            blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                        ),
+                    )
+                } else {
+                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachmentId)
+                        ?: error("Изображение больше недоступно на сервере")
+
+                    InlineAttachmentPreviewUi(
+                        imageUrl = downloadInfo.downloadUrl,
+                    )
+                }
+            }.onSuccess { preview ->
+                _state.value = _state.value.copy(
+                    inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                            attachmentId to preview
+                            )
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                            attachmentId to InlineAttachmentPreviewUi(hasError = true)
+                            )
+                )
+            }
+
+            inlinePreviewJobs.remove(attachmentId)
+        }
+    }
+
+    fun previewInlineImageAttachment(
+        attachment: AttachmentItem,
+    ) {
+        if (!attachment.isImage) return
+        previewImageAttachment(attachment)
     }
 
     fun deleteMessageLocal(messageId: Int) {
@@ -1055,9 +1276,35 @@ private fun refreshSharedSecretState(
         val currentConversationId = _state.value.conversationId ?: return
         val peerUserId = _state.value.peerUserId ?: return
 
-        val messages = messageRepository.listMessages(
-            conversationId = currentConversationId,
-            peerUserId = peerUserId,
+        val page = when (messageViewportMode) {
+            MessageViewportMode.LATEST -> {
+                messageRepository.listMessageWindow(
+                    conversationId = currentConversationId,
+                    peerUserId = peerUserId,
+                )
+            }
+
+            MessageViewportMode.ANCHORED -> {
+                val anchorMessageId = _state.value.anchoredMessageId
+                    ?: _state.value.pinnedMessage?.messageId
+                    ?: return
+                messageRepository.listMessageWindow(
+                    conversationId = currentConversationId,
+                    peerUserId = peerUserId,
+                    anchorId = anchorMessageId,
+                )
+            }
+        }
+
+        val messages = page.messages
+        val anchorMessageId = when (messageViewportMode) {
+            MessageViewportMode.LATEST -> null
+            MessageViewportMode.ANCHORED -> page.anchorMessageId ?: _state.value.anchoredMessageId
+        }
+        applyWindowMetadata(
+            page = page,
+            anchorMessageId = anchorMessageId,
+            requestScroll = false,
         )
 
         chatCacheRepository.replaceMessages(
@@ -1083,18 +1330,92 @@ private fun refreshSharedSecretState(
         }
 
         if (deliveredCount > 0 || readCount > 0) {
-            val refreshedMessages = messageRepository.listMessages(
-                conversationId = currentConversationId,
-                peerUserId = peerUserId,
+            val refreshedPage = when (messageViewportMode) {
+                MessageViewportMode.LATEST -> {
+                    messageRepository.listMessageWindow(
+                        conversationId = currentConversationId,
+                        peerUserId = peerUserId,
+                    )
+                }
+
+                MessageViewportMode.ANCHORED -> {
+                    val activeAnchorId = _state.value.anchoredMessageId
+                        ?: _state.value.pinnedMessage?.messageId
+                        ?: return
+                    messageRepository.listMessageWindow(
+                        conversationId = currentConversationId,
+                        peerUserId = peerUserId,
+                        anchorId = activeAnchorId,
+                    )
+                }
+            }
+            applyWindowMetadata(
+                page = refreshedPage,
+                anchorMessageId = when (messageViewportMode) {
+                    MessageViewportMode.LATEST -> null
+                    MessageViewportMode.ANCHORED -> refreshedPage.anchorMessageId ?: _state.value.anchoredMessageId
+                },
+                requestScroll = false,
             )
 
             chatCacheRepository.replaceMessages(
                 conversationId = currentConversationId,
-                messages = refreshedMessages,
+                messages = refreshedPage.messages,
             )
 
             conversationsRefreshBus.requestRefresh()
         }
+    }
+
+    private suspend fun markMessagesAroundViewport(
+        messages: List<ChatMessage>,
+    ) {
+        val deliveredCount = messageRepository.markIncomingMessagesAsDelivered(messages)
+        val readCount = messageRepository.markIncomingMessagesAsRead(messages)
+        if (deliveredCount > 0 || readCount > 0) {
+            conversationsRefreshBus.requestRefresh()
+        }
+    }
+
+    private fun applyWindowMetadata(
+        page: MessageRepository.MessageWindowPage,
+        anchorMessageId: Int?,
+        requestScroll: Boolean,
+    ) {
+        beforeBoundaryId = page.beforeId
+        beforeCursor = page.beforeCursor
+        afterBoundaryId = page.afterId
+        afterCursor = page.afterCursor
+
+        _state.value = _state.value.copy(
+            anchoredMessageId = anchorMessageId,
+            scrollToMessageId = when {
+                requestScroll -> anchorMessageId
+                anchorMessageId == null -> null
+                else -> _state.value.scrollToMessageId
+            },
+            isLoading = false,
+            error = null,
+        )
+    }
+
+    private fun mergeMessagesForViewport(
+        existing: List<ChatMessage>,
+        incoming: List<ChatMessage>,
+    ): List<ChatMessage> {
+        val merged = linkedMapOf<String, ChatMessage>()
+        (existing + incoming)
+            .sortedWith(
+                compareBy<ChatMessage>(
+                    { parseMillis(it.createdAt) },
+                    { it.messageId },
+                )
+            )
+            .forEach { message ->
+                val key = message.messageUuid?.let { "uuid:$it" } ?: "id:${message.messageId}"
+                merged[key] = message
+            }
+        return merged.values.toList()
     }
 
     private fun mergeMessages(
@@ -1169,6 +1490,7 @@ private fun refreshSharedSecretState(
         attachment: AttachmentItem,
     ) {
         viewModelScope.launch {
+            val cachedPreview = _state.value.inlineAttachmentPreviews[attachment.attachmentId]
             _state.value = _state.value.copy(
                 attachmentSheetMessageId = null,
                 selectedMessageAttachments = emptyList(),
@@ -1184,6 +1506,18 @@ private fun refreshSharedSecretState(
                 info = null,
             )
 
+            if (cachedPreview?.imageBytes != null || !cachedPreview?.imageUrl.isNullOrBlank()) {
+                _state.value = _state.value.copy(
+                    imagePreviewAttachmentId = attachment.attachmentId,
+                    imagePreviewUrl = cachedPreview.imageUrl,
+                    imagePreviewBytes = cachedPreview.imageBytes,
+                    imagePreviewFileName = attachment.fileName,
+                    imagePreviewAttachment = attachment,
+                    isLoadingImagePreview = false,
+                )
+                return@launch
+            }
+
             if (attachment.hasEncryptedBlobKeys) {
                 runCatching {
                     val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
@@ -1195,6 +1529,13 @@ private fun refreshSharedSecretState(
                         blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
                     )
                 }.onSuccess { bytes ->
+                    _state.value = _state.value.copy(
+                        inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                                attachment.attachmentId to InlineAttachmentPreviewUi(
+                                    imageBytes = bytes,
+                                )
+                                )
+                    )
                     _state.value = _state.value.copy(
                         imagePreviewAttachmentId = attachment.attachmentId,
                         imagePreviewUrl = null,
@@ -1231,6 +1572,13 @@ private fun refreshSharedSecretState(
                         return@onSuccess
                     }
 
+                    _state.value = _state.value.copy(
+                        inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                                previewInfo.attachmentId to InlineAttachmentPreviewUi(
+                                    imageUrl = previewInfo.downloadUrl,
+                                )
+                                )
+                    )
                     _state.value = _state.value.copy(
                         imagePreviewAttachmentId = previewInfo.attachmentId,
                         imagePreviewUrl = previewInfo.downloadUrl,

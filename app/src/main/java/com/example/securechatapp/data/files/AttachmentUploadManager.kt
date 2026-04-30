@@ -207,6 +207,18 @@ class AttachmentUploadManager @Inject constructor(
         )
     }
 
+    suspend fun uploadEncryptedAttachments(
+        conversationId: Int,
+        uris: List<Uri>,
+    ): List<UploadedEncryptedAttachment> {
+        return uris.map { uri ->
+            uploadSingleEncryptedAttachment(
+                conversationId = conversationId,
+                uri = uri,
+            )
+        }
+    }
+
     private fun queryDisplayName(uri: Uri): String? {
         return context.contentResolver.query(
             uri,

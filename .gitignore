@@ -62,6 +62,7 @@ pgdump_cms
 
 # Environments
 .env
+.env.local
 .venv
 env/
 venv/
@@ -74,4 +75,3 @@ pgdump_cms/*
 .codex
 /app/google-services.json
 /.gradle-user-home/
-

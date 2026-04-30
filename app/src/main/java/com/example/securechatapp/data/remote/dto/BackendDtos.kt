@@ -607,6 +607,16 @@ data class MessageItemDto(
 @Serializable
 data class ListMessagesResponseDto(
     val items: List<MessageItemDto> = emptyList(),
+    @SerialName("anchor_message_id")
+    val anchorMessageId: Int? = null,
+    @SerialName("before_id")
+    val beforeId: Int? = null,
+    @SerialName("before_cursor")
+    val beforeCursor: String? = null,
+    @SerialName("after_id")
+    val afterId: Int? = null,
+    @SerialName("after_cursor")
+    val afterCursor: String? = null,
 )
 
 @Serializable

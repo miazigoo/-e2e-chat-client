@@ -1,11 +1,13 @@
 package com.example.securechatapp.ui.screens.conversation
 
 import android.content.Context
+import android.app.Activity
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,17 +18,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,15 +44,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import com.example.securechatapp.ui.components.BrandedSkeletonBlock
 import com.example.securechatapp.ui.components.BrandedSkeletonLines
+import com.example.securechatapp.domain.model.MessagePreview
+import com.example.securechatapp.ui.picker.SystemDocumentPickerActivity
+import com.example.securechatapp.ui.picker.SystemDocumentPickerBus
 import com.example.securechatapp.ui.viewmodel.ConversationViewModel
+
+private data class PendingAttachmentUi(
+    val uri: Uri,
+    val displayName: String,
+    val mimeType: String?,
+) {
+    val isImage: Boolean
+        get() = mimeType?.startsWith("image/") == true
+}
 
 @Composable
 fun ConversationScreen(
@@ -57,25 +85,43 @@ fun ConversationScreen(
     val context = LocalContext.current
 
     var message by remember { mutableStateOf("") }
-    var pendingAttachmentUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingAttachmentName by remember { mutableStateOf<String?>(null) }
+    var pendingAttachments by remember { mutableStateOf<List<PendingAttachmentUi>>(emptyList()) }
+    var previewingPendingAttachment by remember { mutableStateOf<PendingAttachmentUi?>(null) }
     var showSharedSecretSettings by remember { mutableStateOf(false) }
+    var highlightedMessageId by remember { mutableStateOf<Int?>(null) }
 
     val listState = rememberLazyListState()
 
     BackHandler(onBack = onBack)
 
-    val attachmentPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        pendingAttachmentUri = uri
-        pendingAttachmentName = uri?.let { selectedUri ->
-            resolveAttachmentDisplayName(context, selectedUri) ?: selectedUri.lastPathSegment
+    val activity = context as? Activity
+
+    LaunchedEffect(Unit) {
+        SystemDocumentPickerBus.results.collectLatest { result ->
+            if (result.requestKey != SystemDocumentPickerActivity.REQUEST_ATTACHMENTS) {
+                return@collectLatest
+            }
+
+            val newItems = result.uris.map(Uri::parse).map { selectedUri ->
+                PendingAttachmentUi(
+                    uri = selectedUri,
+                    displayName = resolveAttachmentDisplayName(context, selectedUri)
+                        ?: selectedUri.lastPathSegment
+                        ?: "Файл",
+                    mimeType = resolveAttachmentMimeType(context, selectedUri),
+                )
+            }
+            pendingAttachments = (pendingAttachments + newItems).distinctBy { it.uri.toString() }
         }
     }
 
     val conversationRows = remember(state.messages) {
         buildConversationRows(state.messages)
+    }
+    val messageRowIndexById = remember(conversationRows) {
+        conversationRows.mapIndexedNotNull { index, row ->
+            (row as? ConversationRow.MessageItem)?.message?.messageId?.let { it to index }
+        }.toMap()
     }
     val conversationBlockedReason = remember(
         state.isConversationPurged,
@@ -137,6 +183,54 @@ fun ConversationScreen(
         }
     }
 
+    LaunchedEffect(highlightedMessageId) {
+        if (highlightedMessageId != null) {
+            delay(2200)
+            highlightedMessageId = null
+        }
+    }
+
+    LaunchedEffect(state.error) {
+        val error = state.error ?: return@LaunchedEffect
+        delay(3000)
+        viewModel.dismissError(error)
+    }
+
+    LaunchedEffect(state.info) {
+        val info = state.info ?: return@LaunchedEffect
+        delay(3000)
+        viewModel.dismissInfo(info)
+    }
+
+    LaunchedEffect(state.scrollToMessageId, conversationRows.size) {
+        val targetMessageId = state.scrollToMessageId ?: return@LaunchedEffect
+        val targetIndex = messageRowIndexById[targetMessageId] ?: return@LaunchedEffect
+        listState.scrollToItem(targetIndex)
+        highlightedMessageId = targetMessageId
+        viewModel.onScrollToMessageHandled()
+    }
+
+    LaunchedEffect(listState, state.anchoredMessageId) {
+        if (state.anchoredMessageId == null) return@LaunchedEffect
+
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            Triple(
+                listState.firstVisibleItemIndex,
+                lastVisible,
+                listState.layoutInfo.totalItemsCount,
+            )
+        }.collect { (firstVisible, lastVisible, totalItems) ->
+            if (totalItems <= 0) return@collect
+            if (firstVisible <= 2) {
+                viewModel.loadOlderMessages()
+            }
+            if (lastVisible >= totalItems - 3) {
+                viewModel.loadNewerMessages()
+            }
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
@@ -161,11 +255,18 @@ fun ConversationScreen(
             )
 
             state.error?.let {
-                Banner(text = it, isError = true)
+                Banner(
+                    text = it,
+                    isError = true,
+                    onDismiss = viewModel::dismissError,
+                )
             }
 
             state.info?.let {
-                Banner(text = it)
+                Banner(
+                    text = it,
+                    onDismiss = viewModel::dismissInfo,
+                )
             }
 
             conversationBlockedReason?.let {
@@ -173,15 +274,10 @@ fun ConversationScreen(
             }
 
             state.pinnedMessage?.let { pinned ->
-                Banner(
-                    text = buildString {
-                        append("📌 ")
-                        append(
-                            pinned.text.ifBlank {
-                                if (pinned.hasAttachments) "Закреплено вложение" else "Закреплённое сообщение"
-                            }
-                        )
-                    }
+                PinnedMessageHeader(
+                    preview = pinned,
+                    onClick = viewModel::openPinnedMessageWindow,
+                    onUnpin = viewModel::unpinMessage,
                 )
             }
 
@@ -220,12 +316,16 @@ fun ConversationScreen(
                                 msg = row.message,
                                 forceMine = state.isSavedMessages,
                                 groupPosition = row.groupPosition,
+                                isHighlighted = highlightedMessageId == row.message.messageId,
                                 isDeleting = state.deletingMessageIds.contains(row.message.messageId),
                                 onDeleteLocal = { viewModel.deleteMessageLocal(row.message.messageId) },
                                 onDeleteGlobal = { viewModel.deleteMessageGlobal(row.message.messageId) },
                                 onAttachmentsClick = {
                                     viewModel.showMessageAttachments(row.message)
                                 },
+                                inlineAttachmentPreviews = state.inlineAttachmentPreviews,
+                                onRequestInlineImagePreview = viewModel::ensureInlineImagePreview,
+                                onInlineImageClick = viewModel::previewInlineImageAttachment,
                                 onRetrySend = {
                                     viewModel.retryFailedMessage(row.message.messageId)
                                 },
@@ -253,39 +353,21 @@ fun ConversationScreen(
                 }
             }
 
-            pendingAttachmentName?.let { name ->
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                    tonalElevation = 1.dp,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "📎 $name",
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-
-                        TextButton(
-                            onClick = {
-                                pendingAttachmentUri = null
-                                pendingAttachmentName = null
-                            }
-                        ) {
-                            Text("Убрать")
+            if (pendingAttachments.isNotEmpty()) {
+                PendingAttachmentsBar(
+                    items = pendingAttachments,
+                    onPreview = { previewingPendingAttachment = it },
+                    onRemove = { uri ->
+                        pendingAttachments = pendingAttachments.filterNot { it.uri == uri }
+                        if (previewingPendingAttachment?.uri == uri) {
+                            previewingPendingAttachment = null
                         }
-                    }
-                }
+                    },
+                    onClearAll = {
+                        pendingAttachments = emptyList()
+                        previewingPendingAttachment = null
+                    },
+                )
             }
 
             ConversationComposer(
@@ -294,39 +376,34 @@ fun ConversationScreen(
                 replyPreview = state.replyingTo,
                 onCancelReply = viewModel::cancelReply,
                 onAttachClick = {
-                    if (conversationBlockedReason == null) {
-                        attachmentPicker.launch("*/*")
+                    if (conversationBlockedReason == null && activity != null) {
+                        activity.startActivity(
+                            SystemDocumentPickerActivity.createIntent(
+                                activity = activity,
+                                mimeTypes = arrayOf("*/*"),
+                                allowMultiple = true,
+                                requestKey = SystemDocumentPickerActivity.REQUEST_ATTACHMENTS,
+                            )
+                        )
                     }
                 },
                 onSendClick = {
                     val textToSend = message
-                    val attachmentToSend = pendingAttachmentUri
+                    val attachmentsToSend = pendingAttachments.map { it.uri }
 
                     viewModel.sendMessage(
                         text = textToSend,
-                        attachmentUri = attachmentToSend,
+                        attachmentUris = attachmentsToSend,
                     ) {
                         message = ""
-                        pendingAttachmentUri = null
-                        pendingAttachmentName = null
+                        pendingAttachments = emptyList()
                     }
                 },
                 isUploading = state.isUploadingAttachment,
                 inputEnabled = conversationBlockedReason == null,
                 placeholder = composerPlaceholder,
-                sendEnabled = message.isNotBlank() || pendingAttachmentUri != null,
+                sendEnabled = message.isNotBlank() || pendingAttachments.isNotEmpty(),
             )
-
-            if (state.pinnedMessage != null) {
-                TextButton(
-                    onClick = viewModel::unpinMessage,
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(end = 10.dp, bottom = 4.dp),
-                ) {
-                    Text("Снять закреп")
-                }
-            }
         }
 
         if (state.attachmentSheetMessageId != null) {
@@ -351,6 +428,13 @@ fun ConversationScreen(
                 isDownloading = state.downloadingAttachmentId == state.imagePreviewAttachmentId,
                 onDismiss = viewModel::dismissImagePreview,
                 onDownload = viewModel::downloadCurrentPreview,
+            )
+        }
+
+        previewingPendingAttachment?.takeIf { it.isImage }?.let { attachment ->
+            PendingAttachmentPreviewDialog(
+                attachment = attachment,
+                onDismiss = { previewingPendingAttachment = null },
             )
         }
 
@@ -386,6 +470,229 @@ fun ConversationScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PinnedMessageHeader(
+    preview: MessagePreview,
+    onClick: () -> Unit,
+    onUnpin: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 1.dp,
+    ) {
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = { menuExpanded = true },
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 3.dp, height = 34.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF3B82F6)),
+                )
+
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(10.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = "Сообщение закреплено",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color(0xFF3B82F6),
+                    )
+                    Text(
+                        text = messagePreviewText(preview),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Снять закреп") },
+                    onClick = {
+                        menuExpanded = false
+                        onUnpin()
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentsBar(
+    items: List<PendingAttachmentUi>,
+    onPreview: (PendingAttachmentUi) -> Unit,
+    onRemove: (Uri) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "📎 Выбрано файлов: ${items.size}",
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                if (items.size > 1) {
+                    TextButton(onClick = onClearAll) {
+                        Text("Очистить")
+                    }
+                }
+            }
+
+            items.forEach { item ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (item.isImage) {
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = item.displayName,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { onPreview(item) },
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.size(64.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("📄")
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = item.displayName,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (item.isImage) "Нажмите, чтобы посмотреть" else "Файл готов к отправке",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                    TextButton(
+                        onClick = { onRemove(item.uri) },
+                    ) {
+                        Text("Убрать")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentPreviewDialog(
+    attachment: PendingAttachmentUi,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Black.copy(alpha = 0.96f),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Закрыть", color = Color.White)
+                    }
+
+                    Text(
+                        text = attachment.displayName,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+
+                AsyncImage(
+                    model = attachment.uri,
+                    contentDescription = attachment.displayName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+}
+
 private fun resolveAttachmentDisplayName(
     context: Context,
     uri: Uri,
@@ -402,6 +709,21 @@ private fun resolveAttachmentDisplayName(
             cursor.getString(columnIndex)
         } else {
             null
+        }
+    }
+}
+
+private fun resolveAttachmentMimeType(
+    context: Context,
+    uri: Uri,
+): String? = context.contentResolver.getType(uri)
+
+private fun messagePreviewText(preview: MessagePreview): String {
+    return preview.text.ifBlank {
+        if (preview.hasAttachments) {
+            "📎 Вложение"
+        } else {
+            "Сообщение"
         }
     }
 }

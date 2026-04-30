@@ -9,15 +9,30 @@ plugins {
 }
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+fun loadLocalEnvProperties(projectDir: java.io.File): Map<String, String> {
+    val envFile = projectDir.resolve("../.env.local").normalize()
+    if (!envFile.isFile) return emptyMap()
+
+    val properties = Properties()
+    envFile.inputStream().use(properties::load)
+    return properties.entries.associate { (key, value) ->
+        key.toString() to value.toString()
+    }
+}
+
+val localEnv = loadLocalEnvProperties(projectDir)
 
 fun projectPropertyOrEnv(name: String, fallback: String): String =
     providers.gradleProperty(name).orNull
+        ?: localEnv[name]
         ?: System.getenv(name)
         ?: fallback
 
 fun String.asBuildConfigString(): String = "\"$this\""
 
-val defaultDebugApiBaseUrl = "https://170.168.10.207/api/v1/"
+val defaultDebugApiBaseUrl = "https://dev-api.example.com/api/v1/"
 val defaultReleaseApiBaseUrl = "https://api.example.com/api/v1/"
 
 val debugApiBaseUrl = projectPropertyOrEnv("SECURE_CHAT_DEBUG_API_BASE_URL", defaultDebugApiBaseUrl)
@@ -152,6 +167,13 @@ dependencies {
 }
 
 tasks.configureEach {
+    if (name.contains("Debug", ignoreCase = false)) {
+        doFirst {
+            check(debugApiBaseUrl != defaultDebugApiBaseUrl) {
+                "SECURE_CHAT_DEBUG_API_BASE_URL must be configured via .env.local, Gradle property, or environment variable."
+            }
+        }
+    }
     if (name.contains("Release", ignoreCase = false)) {
         doFirst {
             check(releaseApiBaseUrl != defaultReleaseApiBaseUrl) {

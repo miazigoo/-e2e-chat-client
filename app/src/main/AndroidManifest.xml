@@ -32,6 +32,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.picker.SystemDocumentPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SecureChatApp" />
+
         <service
             android:name=".push.SecureChatFirebaseMessagingService"
             android:exported="false">

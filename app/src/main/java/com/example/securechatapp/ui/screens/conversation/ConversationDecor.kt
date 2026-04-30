@@ -7,20 +7,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.ui.components.BrandedEmptyState
 import com.example.securechatapp.ui.theme.SecureChatTheme
@@ -101,6 +106,7 @@ fun DateSeparatorChip(text: String) {
 fun Banner(
     text: String,
     isError: Boolean = false,
+    onDismiss: (() -> Unit)? = null,
 ) {
     val bg = if (isError) {
         MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
@@ -120,12 +126,31 @@ fun Banner(
         shape = RoundedCornerShape(16.dp),
         color = bg,
     ) {
-        Text(
-            text = text,
-            color = content,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                color = content,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            if (onDismiss != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        text = "✕",
+                        color = content,
+                    )
+                }
+            }
+        }
     }
 }
 
