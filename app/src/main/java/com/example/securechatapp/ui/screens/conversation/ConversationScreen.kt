@@ -606,7 +606,12 @@ private fun PendingAttachmentsBar(
                             Box(
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("📄")
+                                AttachmentFileIcon(
+                                    fileName = item.displayName,
+                                    mimeType = item.mimeType,
+                                    contentDescription = item.displayName,
+                                    modifier = Modifier.size(30.dp),
+                                )
                             }
                         }
                     }

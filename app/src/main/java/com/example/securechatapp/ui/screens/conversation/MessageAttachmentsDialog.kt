@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -138,8 +137,11 @@ private fun AttachmentRow(
                     preview = preview,
                 )
             } else {
-                Text(
-                    text = attachmentIcon(attachment, localState),
+                AttachmentFileIcon(
+                    fileName = attachment.fileName,
+                    mimeType = attachment.mimeType,
+                    contentDescription = attachment.fileName,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
 
@@ -252,23 +254,6 @@ private fun buildAttachmentSubtitle(
     parts += formatFileSize(attachment.fileSize)
 
     return parts.joinToString(" • ")
-}
-
-private fun attachmentIcon(
-    attachment: AttachmentItem,
-    localState: AttachmentLocalState,
-): String {
-    return when (localState) {
-        AttachmentLocalState.DOWNLOADED -> "📂"
-        AttachmentLocalState.DOWNLOADING -> "⏬"
-        AttachmentLocalState.FAILED -> "⚠️"
-        AttachmentLocalState.NOT_DOWNLOADED -> when {
-            attachment.isImage -> "🖼"
-            attachment.mimeType?.startsWith("video/") == true -> "🎬"
-            attachment.mimeType?.startsWith("audio/") == true -> "🎵"
-            else -> "📎"
-        }
-    }
 }
 
 private fun formatFileSize(bytes: Long): String {
