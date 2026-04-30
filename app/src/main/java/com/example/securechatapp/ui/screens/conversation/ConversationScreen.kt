@@ -410,12 +410,14 @@ fun ConversationScreen(
             MessageAttachmentsDialog(
                 attachments = state.selectedMessageAttachments,
                 attachmentLocalStates = state.attachmentLocalStates,
+                inlineAttachmentPreviews = state.inlineAttachmentPreviews,
                 isLoading = state.isLoadingAttachments,
                 downloadingAttachmentId = state.downloadingAttachmentId,
                 onDismiss = viewModel::dismissMessageAttachments,
                 onAttachmentClick = { attachment ->
                     viewModel.onAttachmentSelected(attachment)
-                }
+                },
+                onRequestImagePreview = viewModel::ensureInlineImagePreview,
             )
         }
 
