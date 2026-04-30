@@ -101,6 +101,9 @@ data class InlineAttachmentPreviewUi(
     val hasError: Boolean = false,
 )
 
+private const val INLINE_PREVIEW_MAX_ATTEMPTS = 4
+private const val INLINE_PREVIEW_RETRY_DELAY_MS = 650L
+
 private enum class MessageViewportMode {
     LATEST,
     ANCHORED,
@@ -610,7 +613,7 @@ fun disableSharedSecret() {
     fun ensureInlineImagePreview(
         attachment: AttachmentItem,
     ) {
-        if (!attachment.isImage) return
+        if (!attachment.isImage || !attachment.canDownload) return
 
         val attachmentId = attachment.attachmentId
         val currentPreview = _state.value.inlineAttachmentPreviews[attachmentId]
@@ -618,7 +621,6 @@ fun disableSharedSecret() {
             currentPreview?.isLoading == true ||
             currentPreview?.imageBytes != null ||
             !currentPreview?.imageUrl.isNullOrBlank() ||
-            currentPreview?.hasError == true ||
             inlinePreviewJobs.containsKey(attachmentId)
         ) {
             return
@@ -632,25 +634,7 @@ fun disableSharedSecret() {
 
         inlinePreviewJobs[attachmentId] = viewModelScope.launch {
             runCatching {
-                if (attachment.hasEncryptedBlobKeys) {
-                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachmentId)
-                        ?: error("Вложение больше недоступно на сервере")
-
-                    InlineAttachmentPreviewUi(
-                        imageBytes = encryptedAttachmentFileManager.downloadAndDecryptBytes(
-                            downloadUrl = downloadInfo.downloadUrl,
-                            blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
-                            blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
-                        ),
-                    )
-                } else {
-                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachmentId)
-                        ?: error("Изображение больше недоступно на сервере")
-
-                    InlineAttachmentPreviewUi(
-                        imageUrl = downloadInfo.downloadUrl,
-                    )
-                }
+                loadInlineAttachmentPreviewWithRetry(attachment)
             }.onSuccess { preview ->
                 _state.value = _state.value.copy(
                     inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
@@ -1491,6 +1475,29 @@ private fun refreshSharedSecretState(
     ) {
         viewModelScope.launch {
             val cachedPreview = _state.value.inlineAttachmentPreviews[attachment.attachmentId]
+            if (cachedPreview?.imageBytes != null || !cachedPreview?.imageUrl.isNullOrBlank()) {
+                _state.value = _state.value.copy(
+                    attachmentSheetMessageId = null,
+                    selectedMessageAttachments = emptyList(),
+                    isLoadingAttachments = false,
+                    downloadingAttachmentId = null,
+                    imagePreviewAttachmentId = attachment.attachmentId,
+                    imagePreviewUrl = cachedPreview.imageUrl,
+                    imagePreviewBytes = cachedPreview.imageBytes,
+                    imagePreviewFileName = attachment.fileName,
+                    imagePreviewAttachment = attachment,
+                    isLoadingImagePreview = false,
+                )
+                return@launch
+            }
+
+            if (!attachment.canDownload) {
+                _state.value = _state.value.copy(
+                    info = "Изображение ещё подготавливается на сервере"
+                )
+                return@launch
+            }
+
             _state.value = _state.value.copy(
                 attachmentSheetMessageId = null,
                 selectedMessageAttachments = emptyList(),
@@ -1506,99 +1513,83 @@ private fun refreshSharedSecretState(
                 info = null,
             )
 
-            if (cachedPreview?.imageBytes != null || !cachedPreview?.imageUrl.isNullOrBlank()) {
+            runCatching {
+                loadInlineAttachmentPreviewWithRetry(attachment)
+            }.onSuccess { preview ->
+                _state.value = _state.value.copy(
+                    inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
+                            attachment.attachmentId to preview
+                            )
+                )
                 _state.value = _state.value.copy(
                     imagePreviewAttachmentId = attachment.attachmentId,
-                    imagePreviewUrl = cachedPreview.imageUrl,
-                    imagePreviewBytes = cachedPreview.imageBytes,
+                    imagePreviewUrl = preview.imageUrl,
+                    imagePreviewBytes = preview.imageBytes,
                     imagePreviewFileName = attachment.fileName,
                     imagePreviewAttachment = attachment,
                     isLoadingImagePreview = false,
                 )
-                return@launch
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    imagePreviewAttachmentId = null,
+                    imagePreviewUrl = null,
+                    imagePreviewBytes = null,
+                    imagePreviewFileName = null,
+                    imagePreviewAttachment = null,
+                    isLoadingImagePreview = false,
+                    error = it.message,
+                )
             }
+        }
+    }
 
-            if (attachment.hasEncryptedBlobKeys) {
-                runCatching {
-                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
-                        ?: error("Вложение больше недоступно на сервере")
+    private suspend fun loadInlineAttachmentPreviewWithRetry(
+        attachment: AttachmentItem,
+    ): InlineAttachmentPreviewUi {
+        var lastError: Throwable? = null
 
-                    encryptedAttachmentFileManager.downloadAndDecryptBytes(
-                        downloadUrl = downloadInfo.downloadUrl,
-                        blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
-                        blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
-                    )
-                }.onSuccess { bytes ->
-                    _state.value = _state.value.copy(
-                        inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
-                                attachment.attachmentId to InlineAttachmentPreviewUi(
-                                    imageBytes = bytes,
-                                )
-                                )
-                    )
-                    _state.value = _state.value.copy(
-                        imagePreviewAttachmentId = attachment.attachmentId,
-                        imagePreviewUrl = null,
-                        imagePreviewBytes = bytes,
-                        imagePreviewFileName = attachment.fileName,
-                        imagePreviewAttachment = attachment,
-                        isLoadingImagePreview = false,
-                    )
-                }.onFailure {
-                    _state.value = _state.value.copy(
-                        imagePreviewAttachmentId = null,
-                        imagePreviewUrl = null,
-                        imagePreviewBytes = null,
-                        imagePreviewFileName = null,
-                        imagePreviewAttachment = null,
-                        isLoadingImagePreview = false,
-                        error = it.message,
-                    )
-                }
-            } else {
-                runCatching {
-                    attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
-                }.onSuccess { previewInfo ->
-                    if (previewInfo == null) {
-                        _state.value = _state.value.copy(
-                            imagePreviewAttachmentId = null,
-                            imagePreviewUrl = null,
-                            imagePreviewBytes = null,
-                            imagePreviewFileName = null,
-                            imagePreviewAttachment = null,
-                            isLoadingImagePreview = false,
-                            error = "Изображение больше недоступно на сервере",
-                        )
-                        return@onSuccess
-                    }
+        repeat(INLINE_PREVIEW_MAX_ATTEMPTS) { attempt ->
+            try {
+                return loadInlineAttachmentPreview(attachment)
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                lastError = throwable
 
-                    _state.value = _state.value.copy(
-                        inlineAttachmentPreviews = _state.value.inlineAttachmentPreviews + (
-                                previewInfo.attachmentId to InlineAttachmentPreviewUi(
-                                    imageUrl = previewInfo.downloadUrl,
-                                )
-                                )
-                    )
-                    _state.value = _state.value.copy(
-                        imagePreviewAttachmentId = previewInfo.attachmentId,
-                        imagePreviewUrl = previewInfo.downloadUrl,
-                        imagePreviewBytes = null,
-                        imagePreviewFileName = previewInfo.fileName,
-                        imagePreviewAttachment = attachment,
-                        isLoadingImagePreview = false,
-                    )
-                }.onFailure {
-                    _state.value = _state.value.copy(
-                        imagePreviewAttachmentId = null,
-                        imagePreviewUrl = null,
-                        imagePreviewBytes = null,
-                        imagePreviewFileName = null,
-                        imagePreviewAttachment = null,
-                        isLoadingImagePreview = false,
-                        error = it.message,
-                    )
+                val shouldRetry = attempt < INLINE_PREVIEW_MAX_ATTEMPTS - 1 &&
+                        currentCoroutineContext().isActive
+                if (shouldRetry) {
+                    delay(INLINE_PREVIEW_RETRY_DELAY_MS * (attempt + 1))
                 }
             }
+        }
+
+        throw (lastError ?: IllegalStateException("Не удалось загрузить превью"))
+    }
+
+    private suspend fun loadInlineAttachmentPreview(
+        attachment: AttachmentItem,
+    ): InlineAttachmentPreviewUi {
+        val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(attachment.attachmentId)
+            ?: error(
+                if (attachment.hasEncryptedBlobKeys) {
+                    "Вложение больше недоступно на сервере"
+                } else {
+                    "Изображение больше недоступно на сервере"
+                }
+            )
+
+        return if (attachment.hasEncryptedBlobKeys) {
+            InlineAttachmentPreviewUi(
+                imageBytes = encryptedAttachmentFileManager.downloadAndDecryptBytes(
+                    downloadUrl = downloadInfo.downloadUrl,
+                    blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
+                    blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                ),
+            )
+        } else {
+            InlineAttachmentPreviewUi(
+                imageUrl = downloadInfo.downloadUrl,
+            )
         }
     }
 
