@@ -24,3 +24,19 @@
 # types are renamed/optimized away. Keep the full Whispersystems surface intact.
 -keep class org.whispersystems.** { *; }
 -dontwarn org.whispersystems.**
+
+# Retrofit needs generic signatures and HTTP annotations at runtime to resolve
+# suspend return types like ApiEnvelopeDto<T>. Without these release builds can
+# degrade response types to Object and fail converter creation.
+-keepattributes Signature,InnerClasses,EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
+
+-if interface * { @retrofit2.http.* <methods>; }
+-keep,allowobfuscation interface <1>
+
+-keepclassmembers,allowshrinking,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
+
+-dontwarn retrofit2.Platform
+-dontwarn kotlin.Unit
