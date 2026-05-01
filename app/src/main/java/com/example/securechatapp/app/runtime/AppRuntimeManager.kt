@@ -4,9 +4,13 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
+import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.SessionRepository
+import com.example.securechatapp.domain.model.ConversationEventTypes
+import com.example.securechatapp.push.PushNotificationManager
+import com.example.securechatapp.push.PushPayload
 import com.example.securechatapp.push.PushRegistrationManager
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,6 +32,7 @@ class AppRuntimeManager @Inject constructor(
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val outboxDispatcher: OutboxDispatcher,
     private val pushRegistrationManager: PushRegistrationManager,
+    private val pushNotificationManager: PushNotificationManager,
 ) : DefaultLifecycleObserver {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -40,6 +45,7 @@ class AppRuntimeManager @Inject constructor(
     private var outboxJob: Job? = null
     private var realtimeReconnectJob: Job? = null
     private var sessionObserverJob: Job? = null
+    private var realtimeEventsJob: Job? = null
 
     fun start() {
         if (started) return
@@ -50,6 +56,11 @@ class AppRuntimeManager @Inject constructor(
         sessionObserverJob = scope.launch {
             sessionLocalDataSource.sessionFlow.collectLatest {
                 refreshRuntimeState()
+            }
+        }
+        realtimeEventsJob = scope.launch {
+            realtimeWebSocketManager.events.collectLatest { event ->
+                handleRealtimeEvent(event)
             }
         }
     }
@@ -153,6 +164,30 @@ class AppRuntimeManager @Inject constructor(
                 }
                 delay(10_000L)
             }
+        }
+    }
+
+    private suspend fun handleRealtimeEvent(event: RealtimeEvent) {
+        if (!isForeground) return
+        when (event) {
+            is RealtimeEvent.ConversationEvent -> {
+                if (
+                    event.targetMessageId != null &&
+                    (
+                        event.eventType == ConversationEventTypes.MESSAGE_CREATED ||
+                            event.eventType == ConversationEventTypes.MESSAGE_FORWARDED
+                        )
+                ) {
+                    pushNotificationManager.handle(
+                        PushPayload.NewMessage(
+                            conversationId = event.conversationId,
+                            messageId = event.targetMessageId,
+                        )
+                    )
+                }
+            }
+
+            else -> Unit
         }
     }
 }

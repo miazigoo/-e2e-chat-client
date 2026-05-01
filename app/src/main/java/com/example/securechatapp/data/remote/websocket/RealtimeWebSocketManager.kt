@@ -36,6 +36,7 @@ sealed interface RealtimeEvent {
     data class ConversationEvent(
         val conversationId: Int,
         val eventType: String,
+        val targetMessageId: Int? = null,
     ) : RealtimeEvent
     data class AppUpdateAvailable(
         val release: AppReleaseInfo,
@@ -285,17 +286,28 @@ class RealtimeWebSocketManager @Inject constructor(
 
             "conversation.event" -> {
                 val conversationId = parsed["conversation_id"]?.jsonPrimitive?.intOrNull ?: return
-                val eventType = parsed["event"]
-                    ?.jsonObject
+                val eventPayload = parsed["event"]?.jsonObject
+                val eventType = eventPayload
                     ?.get("event_type")
                     ?.jsonPrimitive
                     ?.contentOrNull
                     ?: "unknown"
+                val targetMessageId = eventPayload
+                    ?.get("target_message_id")
+                    ?.jsonPrimitive
+                    ?.intOrNull
+                    ?: eventPayload
+                        ?.get("payload")
+                        ?.jsonObject
+                        ?.get("message_id")
+                        ?.jsonPrimitive
+                        ?.intOrNull
 
                 _events.emit(
                     RealtimeEvent.ConversationEvent(
                         conversationId = conversationId,
                         eventType = eventType,
+                        targetMessageId = targetMessageId,
                     )
                 )
             }

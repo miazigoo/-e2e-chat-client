@@ -25,6 +25,7 @@ import com.example.securechatapp.ui.navigation.Routes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.delay
 
 @Singleton
 class PushNotificationManager @Inject constructor(
@@ -68,22 +69,14 @@ class PushNotificationManager @Inject constructor(
             conversationRepository.getConversation(payload.conversationId)
         }.getOrNull() ?: return
 
-        val messages = runCatching {
-            messageRepository.listMessages(
-                conversationId = payload.conversationId,
-                peerUserId = conversation.peerUserId,
-            )
-        }.getOrNull() ?: return
-
-        val message = messages.lastOrNull { it.messageId == payload.messageId } ?: return
+        val message = awaitNotificationMessage(
+            payload = payload,
+            peerUserId = conversation.peerUserId,
+        ) ?: return
         if (message.isMine) return
 
         val title = conversation.title
-        val body = when {
-            message.text.isNotBlank() -> message.text
-            message.hasAttachments -> "Вложение"
-            else -> "Новое защищённое сообщение"
-        }
+        val body = buildNotificationBody(message)
 
         val notificationId = buildConversationNotificationId(payload.conversationId)
         val openIntent = Intent(context, MainActivity::class.java).apply {
@@ -139,7 +132,6 @@ class PushNotificationManager @Inject constructor(
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
-            .setShortcutId("conversation_${payload.conversationId}")
             .addAction(
                 NotificationCompat.Action.Builder(
                     android.R.drawable.ic_menu_view,
@@ -251,6 +243,49 @@ class PushNotificationManager @Inject constructor(
         return channelId
     }
 
+    private suspend fun awaitNotificationMessage(
+        payload: PushPayload.NewMessage,
+        peerUserId: Int,
+    ): com.example.securechatapp.domain.model.ChatMessage? {
+        repeat(MESSAGE_LOOKUP_ATTEMPTS) { attempt ->
+            val messages = runCatching {
+                messageRepository.listMessages(
+                    conversationId = payload.conversationId,
+                    peerUserId = peerUserId,
+                )
+            }.getOrNull()
+
+            val message = messages?.lastOrNull { it.messageId == payload.messageId }
+            if (message != null) {
+                return message
+            }
+
+            if (attempt < MESSAGE_LOOKUP_ATTEMPTS - 1) {
+                delay(MESSAGE_LOOKUP_RETRY_DELAY_MS)
+            }
+        }
+
+        return null
+    }
+
+    private fun buildNotificationBody(
+        message: com.example.securechatapp.domain.model.ChatMessage,
+    ): String {
+        if (message.text.isNotBlank() && message.text != "[attachment]") {
+            return message.text
+        }
+
+        val attachments = message.attachments
+        if (attachments.isEmpty()) {
+            return if (message.hasAttachments) "Вложение" else "Новое защищённое сообщение"
+        }
+
+        return when (attachments.size) {
+            1 -> "📎 ${attachments.first().fileName}"
+            else -> "📎 ${attachments.first().fileName} +${attachments.size - 1}"
+        }
+    }
+
     private fun canPostNotifications(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         return ContextCompat.checkSelfPermission(
@@ -293,5 +328,7 @@ class PushNotificationManager @Inject constructor(
         const val CHANNEL_UPDATES = "secure_chat_updates"
         const val NOTIFICATION_ID_APP_UPDATES = 10_001
         val LIGHT_VIBRATION_PATTERN = longArrayOf(0L, 35L, 30L, 45L)
+        const val MESSAGE_LOOKUP_ATTEMPTS = 5
+        const val MESSAGE_LOOKUP_RETRY_DELAY_MS = 450L
     }
 }

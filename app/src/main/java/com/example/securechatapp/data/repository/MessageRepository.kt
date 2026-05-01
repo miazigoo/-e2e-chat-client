@@ -1,5 +1,6 @@
 package com.example.securechatapp.data.repository
 
+import android.util.Log
 import com.example.securechatapp.core.crypto.AttachmentCryptoEngine
 import com.example.securechatapp.core.crypto.EncryptedAttachmentDescriptor
 import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
@@ -41,6 +42,7 @@ class MessageRepository @Inject constructor(
 ) : BaseApiRepository(json) {
 
     private val jsonParser = json
+    private val logTag = "MessageRepository"
 
     data class MessageWindowPage(
         val messages: List<ChatMessage>,
@@ -404,6 +406,16 @@ class MessageRepository @Inject constructor(
                 text = "🔐 ${e.message}",
                 attachments = emptyList(),
             )
+        } catch (e: Exception) {
+            Log.w(
+                logTag,
+                "Failed to decrypt message payload, showing placeholder instead",
+                e,
+            )
+            return DecodedMessagePayload(
+                text = UNDECRYPTABLE_MESSAGE_PLACEHOLDER,
+                attachments = emptyList(),
+            )
         }
 
         val payload = runCatching {
@@ -489,6 +501,11 @@ class MessageRepository @Inject constructor(
             mimeType?.startsWith("audio/") == true -> "audio_$attachmentId"
             else -> "attachment_$attachmentId"
         }
+    }
+
+    private companion object {
+        const val UNDECRYPTABLE_MESSAGE_PLACEHOLDER =
+            "Сообщение не удалось расшифровать на этом устройстве"
     }
 }
 
