@@ -454,6 +454,30 @@ data class ConversationSettingsResponseDto(
 )
 
 @Serializable
+data class MessageDevicePayloadRequestDto(
+    @SerialName("device_id")
+    val deviceId: Int,
+    val ciphertext: String,
+    @SerialName("ciphertext_version")
+    val ciphertextVersion: Int = 1,
+    val nonce: String,
+    @SerialName("aad_hash")
+    val aadHash: String? = null,
+)
+
+@Serializable
+data class MessageDevicePayloadDto(
+    @SerialName("device_id")
+    val deviceId: Int,
+    val ciphertext: String,
+    @SerialName("ciphertext_version")
+    val ciphertextVersion: Int,
+    val nonce: String,
+    @SerialName("aad_hash")
+    val aadHash: String? = null,
+)
+
+@Serializable
 data class SendMessageRequestDto(
     @SerialName("conversation_id")
     val conversationId: Int,
@@ -479,6 +503,8 @@ data class SendMessageRequestDto(
     val expiresAt: String? = null,
     @SerialName("attachment_ids")
     val attachmentIds: List<Int> = emptyList(),
+    @SerialName("device_payloads")
+    val devicePayloads: List<MessageDevicePayloadRequestDto> = emptyList(),
 )
 
 @Serializable
@@ -493,6 +519,8 @@ data class SendMessageResponseDto(
     val recipientUserId: Int,
     @SerialName("recipient_device_id")
     val recipientDeviceId: Int,
+    @SerialName("recipient_device_ids")
+    val recipientDeviceIds: List<Int> = emptyList(),
     @SerialName("server_received_at")
     val serverReceivedAt: String,
     @SerialName("delivery_status")
@@ -523,6 +551,8 @@ data class ForwardedMessageItemDto(
     val messageUuid: String,
     @SerialName("recipient_device_id")
     val recipientDeviceId: Int,
+    @SerialName("recipient_device_ids")
+    val recipientDeviceIds: List<Int> = emptyList(),
     @SerialName("server_received_at")
     val serverReceivedAt: String,
 )
@@ -552,9 +582,18 @@ data class MessagePreviewDto(
     val messageUuid: String,
     @SerialName("sender_user_id")
     val senderUserId: Int,
+    @SerialName("sender_device_id")
+    val senderDeviceId: Int? = null,
     @SerialName("message_type")
     val messageType: String = "text",
     val ciphertext: String,
+    @SerialName("ciphertext_version")
+    val ciphertextVersion: Int? = null,
+    val nonce: String? = null,
+    @SerialName("aad_hash")
+    val aadHash: String? = null,
+    @SerialName("device_payload")
+    val devicePayload: MessageDevicePayloadDto? = null,
     @SerialName("has_attachments")
     val hasAttachments: Boolean = false,
     @SerialName("client_created_at")
@@ -569,6 +608,8 @@ data class MessageItemDto(
     val messageUuid: String,
     @SerialName("sender_user_id")
     val senderUserId: Int,
+    @SerialName("sender_device_id")
+    val senderDeviceId: Int? = null,
     @SerialName("recipient_user_id")
     val recipientUserId: Int,
     @SerialName("message_type")
@@ -581,6 +622,8 @@ data class MessageItemDto(
     val nonce: String = "",
     @SerialName("aad_hash")
     val aadHash: String? = null,
+    @SerialName("device_payload")
+    val devicePayload: MessageDevicePayloadDto? = null,
     @SerialName("client_created_at")
     val clientCreatedAt: String,
     @SerialName("server_received_at")

@@ -3,6 +3,7 @@ package com.example.securechatapp.data.repository
 import com.example.securechatapp.core.network.ApiErrorEnvelopeDto
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.data.remote.api.KeysApi
+import com.example.securechatapp.data.remote.dto.keys.KeyBundleItemDto
 import com.example.securechatapp.data.remote.dto.keys.KeyBundleResponseDto
 import com.example.securechatapp.data.remote.dto.keys.PreKeyDto
 import com.example.securechatapp.data.remote.dto.keys.RefillPreKeysRequestDto
@@ -32,6 +33,19 @@ class SignalPreKeyRepositoryImpl @Inject constructor(
 
         return callApi {
             keysApi.getKeyBundle(userId).data.toDomain()
+        }
+    }
+
+    override suspend fun getBundlesForUser(userId: Int): AppResult<List<SignalKeyBundle>> {
+        if (userId <= 0) {
+            return AppResult.Error(
+                code = "INVALID_USER_ID",
+                message = "User id must be positive.",
+            )
+        }
+
+        return callApi {
+            keysApi.getKeyBundles(userId).data.devices.map { it.toDomain() }
         }
     }
 
@@ -114,6 +128,27 @@ class SignalPreKeyRepositoryImpl @Inject constructor(
     }
 
     private fun KeyBundleResponseDto.toDomain(): SignalKeyBundle {
+        return SignalKeyBundle(
+            userId = userId,
+            deviceId = deviceId,
+            requestedByDeviceId = requestedByDeviceId,
+            registrationId = registrationId,
+            publicIdentityKey = publicIdentityKey,
+            publicSigningKey = publicSigningKey,
+            signedPreKeyId = signedPreKeyId,
+            signedPreKey = signedPreKey,
+            signedPreKeySignature = signedPreKeySignature,
+            oneTimePreKey = oneTimePreKey?.let {
+                SignalPublicPreKey(
+                    preKeyId = it.preKeyId,
+                    publicPreKey = it.publicPreKey,
+                )
+            },
+            preKeysRemaining = preKeysRemaining,
+        )
+    }
+
+    private fun KeyBundleItemDto.toDomain(): SignalKeyBundle {
         return SignalKeyBundle(
             userId = userId,
             deviceId = deviceId,

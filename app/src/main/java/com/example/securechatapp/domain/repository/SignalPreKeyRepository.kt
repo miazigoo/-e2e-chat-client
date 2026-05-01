@@ -10,6 +10,8 @@ import com.example.securechatapp.domain.model.SignalSignedPreKeyRotationResult
 interface SignalPreKeyRepository {
     suspend fun getBundleForUser(userId: Int): AppResult<SignalKeyBundle>
 
+    suspend fun getBundlesForUser(userId: Int): AppResult<List<SignalKeyBundle>>
+
     suspend fun refillOneTimePreKeys(
         preKeys: List<SignalPublicPreKey>,
     ): AppResult<SignalPreKeyRefillResult>

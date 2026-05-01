@@ -7,6 +7,10 @@ import com.example.securechatapp.core.crypto.SecureMessagePayloadV1
 import com.example.securechatapp.crypto.engine.CryptoEngine
 import com.example.securechatapp.crypto.sharedsecret.ConversationSharedSecretMissingException
 import com.example.securechatapp.crypto.sharedsecret.ConversationSharedSecretCrypto
+import com.example.securechatapp.crypto.signal.PersistentSignalProtocolStore
+import com.example.securechatapp.crypto.signal.SignalCiphertextType
+import com.example.securechatapp.crypto.signal.SignalMessageCryptoEngine
+import com.example.securechatapp.crypto.signal.SignalRemoteAddress
 import com.example.securechatapp.crypto.engine.decryptToPlainText
 import com.example.securechatapp.crypto.engine.encryptPlainText
 import com.example.securechatapp.crypto.engine.nowIso
@@ -17,9 +21,11 @@ import com.example.securechatapp.data.remote.dto.ForwardMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.ForwardMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
+import com.example.securechatapp.data.remote.dto.MessageDevicePayloadRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
 import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
+import com.example.securechatapp.domain.repository.SignalPreKeyRepository
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessagePreview
@@ -30,6 +36,7 @@ import com.example.securechatapp.domain.model.SharedTabCounts
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 
 @Singleton
@@ -38,6 +45,9 @@ class MessageRepository @Inject constructor(
     private val crypto: CryptoEngine,
     private val attachmentCryptoEngine: AttachmentCryptoEngine,
     private val sharedSecretCrypto: ConversationSharedSecretCrypto,
+    private val signalPreKeyRepository: SignalPreKeyRepository,
+    private val signalMessageCryptoEngine: SignalMessageCryptoEngine,
+    private val signalStore: PersistentSignalProtocolStore,
     json: Json,
 ) : BaseApiRepository(json) {
 
@@ -267,6 +277,7 @@ class MessageRepository @Inject constructor(
             error("Для этого чата нужно включить дополнительное шифрование на этом устройстве")
         }
 
+        val transportPlainText = sharedSecretPayload?.ciphertext ?: payloadJson
         val legacyEncrypted = if (sharedSecretPayload == null) {
             crypto.encryptPlainText(payloadJson)
         } else {
@@ -274,6 +285,14 @@ class MessageRepository @Inject constructor(
         }
         val ciphertext = sharedSecretPayload?.ciphertext ?: legacyEncrypted?.ciphertext.orEmpty()
         val nonce = sharedSecretPayload?.nonce ?: legacyEncrypted?.nonce.orEmpty()
+        val devicePayloads = if (conversation.isSavedMessages) {
+            emptyList()
+        } else {
+            buildRecipientDevicePayloads(
+                recipientUserId = recipientUserId,
+                transportPlainText = transportPlainText,
+            )
+        }
 
         val messageType = if (distinctAttachmentIds.isNotEmpty() && plainText.isBlank()) {
             "file"
@@ -295,6 +314,7 @@ class MessageRepository @Inject constructor(
                     clientCreatedAt = crypto.nowIso(),
                     replyToMessageId = replyToMessageId,
                     attachmentIds = distinctAttachmentIds,
+                    devicePayloads = devicePayloads,
                 )
             ).data
         }
@@ -372,6 +392,15 @@ class MessageRepository @Inject constructor(
         val attachments: List<AttachmentItem>,
     )
 
+    internal data class MessageCipherEnvelope(
+        val conversationUuid: String,
+        val senderUserId: Int,
+        val senderDeviceId: Int? = null,
+        val ciphertext: String,
+        val ciphertextVersion: Int? = null,
+        val encryptionMode: String,
+    )
+
     private fun buildEncryptedMessagePayload(
         plainText: String,
         attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
@@ -387,20 +416,48 @@ class MessageRepository @Inject constructor(
         )
     }
 
+    private suspend fun buildRecipientDevicePayloads(
+        recipientUserId: Int,
+        transportPlainText: String,
+    ): List<MessageDevicePayloadRequestDto> {
+        return when (val bundlesResult = signalPreKeyRepository.getBundlesForUser(recipientUserId)) {
+            is com.example.securechatapp.core.result.AppResult.Success -> {
+                bundlesResult.data
+                    .distinctBy { it.deviceId }
+                    .map { bundle ->
+                        val encrypted = signalMessageCryptoEngine.encrypt(
+                            remoteAddress = SignalRemoteAddress(
+                                userId = recipientUserId,
+                                deviceId = bundle.deviceId,
+                            ),
+                            remoteBundle = bundle,
+                            plainText = transportPlainText,
+                        )
+                        MessageDevicePayloadRequestDto(
+                            deviceId = bundle.deviceId,
+                            ciphertext = encrypted.ciphertext,
+                            ciphertextVersion = encrypted.type.wireValue,
+                            nonce = SIGNAL_DEVICE_PAYLOAD_NONCE,
+                            aadHash = null,
+                        )
+                    }
+            }
+
+            is com.example.securechatapp.core.result.AppResult.Error -> {
+                error(
+                    bundlesResult.message.ifBlank {
+                        "Не удалось получить ключи устройств собеседника"
+                    }
+                )
+            }
+        }
+    }
+
     private fun decodeEncryptedMessagePayload(
-        conversationUuid: String,
-        ciphertext: String,
-        encryptionMode: String,
+        envelope: MessageCipherEnvelope,
     ): DecodedMessagePayload {
         val decrypted = try {
-            if (encryptionMode == "signal_plus_shared_secret" || ciphertext.startsWith("ss1:")) {
-                sharedSecretCrypto.decryptIfNeeded(
-                    conversationUuid = conversationUuid,
-                    ciphertext = ciphertext,
-                )
-            } else {
-                crypto.decryptToPlainText(ciphertext)
-            }
+            decryptTransportPayload(envelope)
         } catch (e: ConversationSharedSecretMissingException) {
             return DecodedMessagePayload(
                 text = "🔐 ${e.message}",
@@ -444,6 +501,85 @@ class MessageRepository @Inject constructor(
             text = text,
             attachments = attachments,
         )
+    }
+
+    private fun decryptTransportPayload(
+        envelope: MessageCipherEnvelope,
+    ): String {
+        val transportPlainText = when (envelope.ciphertextVersion) {
+            SignalCiphertextType.SIGNAL.wireValue,
+            SignalCiphertextType.PREKEY.wireValue,
+            -> decryptSignalCiphertext(envelope)
+
+            else -> {
+                if (
+                    envelope.encryptionMode == "signal_plus_shared_secret" ||
+                    envelope.ciphertext.startsWith("ss1:")
+                ) {
+                    envelope.ciphertext
+                } else {
+                    crypto.decryptToPlainText(envelope.ciphertext)
+                }
+            }
+        }
+
+        return if (
+            envelope.encryptionMode == "signal_plus_shared_secret" ||
+            transportPlainText.startsWith("ss1:")
+        ) {
+            sharedSecretCrypto.decryptIfNeeded(
+                conversationUuid = envelope.conversationUuid,
+                ciphertext = transportPlainText,
+            )
+        } else {
+            transportPlainText
+        }
+    }
+
+    private fun decryptSignalCiphertext(
+        envelope: MessageCipherEnvelope,
+    ): String {
+        val ciphertextVersion = envelope.ciphertextVersion
+            ?: error("Signal ciphertext version is required")
+        val signalType = SignalCiphertextType.fromWireValue(ciphertextVersion)
+        val candidateDeviceIds = buildSenderDeviceCandidates(envelope)
+
+        if (candidateDeviceIds.isEmpty()) {
+            error("Сервер не передал sender_device_id, а локальная Signal-сессия для этого пользователя ещё не известна")
+        }
+
+        var lastError: Throwable? = null
+        candidateDeviceIds.forEach { deviceId ->
+            runCatching {
+                runBlocking {
+                    signalMessageCryptoEngine.decrypt(
+                        remoteAddress = SignalRemoteAddress(
+                            userId = envelope.senderUserId,
+                            deviceId = deviceId,
+                        ),
+                        ciphertext = envelope.ciphertext,
+                        type = signalType,
+                    )
+                }
+            }.onSuccess { return it }
+                .onFailure { lastError = it }
+        }
+
+        throw lastError ?: IllegalStateException("Signal message decryption failed")
+    }
+
+    private fun buildSenderDeviceCandidates(
+        envelope: MessageCipherEnvelope,
+    ): List<Int> {
+        val explicitDeviceId = envelope.senderDeviceId
+        if (explicitDeviceId != null && explicitDeviceId > 0) {
+            return listOf(explicitDeviceId)
+        }
+
+        return signalStore
+            .getSubDeviceSessions("user:${envelope.senderUserId}")
+            .distinct()
+            .sorted()
     }
 
     private fun descriptorToAttachmentUi(
@@ -506,6 +642,7 @@ class MessageRepository @Inject constructor(
     private companion object {
         const val UNDECRYPTABLE_MESSAGE_PLACEHOLDER =
             "Сообщение не удалось расшифровать на этом устройстве"
+        const val SIGNAL_DEVICE_PAYLOAD_NONCE = "signal"
     }
 }
 
@@ -513,9 +650,18 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
     conversationUuid: String,
     peerUserId: Int,
     forceMine: Boolean,
-    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
+    decoder: (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
 ): ChatMessage {
-    val decoded = decoder(conversationUuid, ciphertext, encryptionMode)
+    val decoded = decoder(
+        MessageRepository.MessageCipherEnvelope(
+            conversationUuid = conversationUuid,
+            senderUserId = senderUserId,
+            senderDeviceId = senderDeviceId,
+            ciphertext = ciphertext,
+            ciphertextVersion = ciphertextVersion,
+            encryptionMode = encryptionMode,
+        )
+    )
     return ChatMessage(
         messageId = messageId,
         messageUuid = messageUuid,
@@ -548,12 +694,17 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
 
 private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomainPreview(
     conversationUuid: String,
-    decoder: (String, String, String) -> MessageRepository.DecodedMessagePayload,
+    decoder: (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
 ): MessagePreview {
     val decoded = decoder(
-        conversationUuid,
-        ciphertext,
-        if (ciphertext.startsWith("ss1:")) "signal_plus_shared_secret" else "signal",
+        MessageRepository.MessageCipherEnvelope(
+            conversationUuid = conversationUuid,
+            senderUserId = senderUserId,
+            senderDeviceId = senderDeviceId,
+            ciphertext = ciphertext,
+            ciphertextVersion = ciphertextVersion,
+            encryptionMode = if (ciphertext.startsWith("ss1:")) "signal_plus_shared_secret" else "signal",
+        )
     )
     return MessagePreview(
         messageId = messageId,

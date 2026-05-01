@@ -1,6 +1,7 @@
 package com.example.securechatapp.data.remote.api
 
 import com.example.securechatapp.core.network.ApiEnvelopeDto
+import com.example.securechatapp.data.remote.dto.keys.KeyBundlesResponseDto
 import com.example.securechatapp.data.remote.dto.keys.KeyBundleResponseDto
 import com.example.securechatapp.data.remote.dto.keys.RefillPreKeysRequestDto
 import com.example.securechatapp.data.remote.dto.keys.RefillPreKeysResponseDto
@@ -17,6 +18,11 @@ interface KeysApi {
     suspend fun getKeyBundle(
         @Path("userId") userId: Int,
     ): ApiEnvelopeDto<KeyBundleResponseDto>
+
+    @GET("keys/bundles/{userId}")
+    suspend fun getKeyBundles(
+        @Path("userId") userId: Int,
+    ): ApiEnvelopeDto<KeyBundlesResponseDto>
 
     @POST("keys/prekeys/refill")
     suspend fun refillPreKeys(

@@ -67,3 +67,36 @@ data class KeyBundleResponseDto(
     @SerialName("prekeys_remaining")
     val preKeysRemaining: Int,
 )
+
+@Serializable
+data class KeyBundleItemDto(
+    @SerialName("user_id")
+    val userId: Int,
+    @SerialName("device_id")
+    val deviceId: Int,
+    @SerialName("requested_by_device_id")
+    val requestedByDeviceId: Int,
+    @SerialName("registration_id")
+    val registrationId: Int = 0,
+    @SerialName("public_identity_key")
+    val publicIdentityKey: String,
+    @SerialName("public_signing_key")
+    val publicSigningKey: String,
+    @SerialName("signed_prekey_id")
+    val signedPreKeyId: Int = 1,
+    @SerialName("signed_prekey")
+    val signedPreKey: String,
+    @SerialName("signed_prekey_signature")
+    val signedPreKeySignature: String,
+    @SerialName("one_time_prekey")
+    val oneTimePreKey: PreKeyDto? = null,
+    @SerialName("prekeys_remaining")
+    val preKeysRemaining: Int,
+)
+
+@Serializable
+data class KeyBundlesResponseDto(
+    @SerialName("user_id")
+    val userId: Int,
+    val devices: List<KeyBundleItemDto> = emptyList(),
+)
