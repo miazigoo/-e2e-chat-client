@@ -43,10 +43,34 @@ val debugSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_DEBUG_SIGNAL_
 val releaseSignalProtocolEnabled = projectPropertyOrEnv("SECURE_CHAT_RELEASE_SIGNAL_PROTOCOL", "false").toBoolean()
 val debugAuthHintsVisible = projectPropertyOrEnv("SECURE_CHAT_SHOW_DEBUG_AUTH_INFO", "true").toBoolean()
 val releaseUseDebugSigning = projectPropertyOrEnv("SECURE_CHAT_RELEASE_USE_DEBUG_SIGNING", "false").toBoolean()
+val caddyRootCaPath = projectPropertyOrEnv(
+    "SECURE_CHAT_CADDY_ROOT_CA_PATH",
+    project.rootDir.resolve("../e2e-chat-server/deploy/certs/caddy-root-ca.crt").normalize().path,
+)
+val generatedLocalCaResDir = layout.buildDirectory.dir("generated/res/local-ca")
+
+val generateLocalCaResource = tasks.register("generateLocalCaResource") {
+    val outputFile = generatedLocalCaResDir.map { it.file("raw/caddy_root_ca.pem") }
+    inputs.property("caddyRootCaPath", caddyRootCaPath)
+    outputs.file(outputFile)
+
+    doLast {
+        val sourceFile = file(caddyRootCaPath)
+        check(sourceFile.isFile) {
+            "Caddy root CA not found at '$caddyRootCaPath'. Configure SECURE_CHAT_CADDY_ROOT_CA_PATH or place the cert in ../e2e-chat-server/deploy/certs/caddy-root-ca.crt."
+        }
+
+        val targetFile = outputFile.get().asFile
+        targetFile.parentFile.mkdirs()
+        sourceFile.copyTo(targetFile, overwrite = true)
+    }
+}
 
 android {
     namespace = "com.example.securechatapp"
     compileSdk = 35
+
+    sourceSets.getByName("main").res.srcDir(generatedLocalCaResDir)
 
     defaultConfig {
         applicationId = "com.example.securechatapp"
@@ -167,6 +191,9 @@ dependencies {
 }
 
 tasks.configureEach {
+    if (name == "preBuild") {
+        dependsOn(generateLocalCaResource)
+    }
     if (name.contains("Debug", ignoreCase = false)) {
         doFirst {
             check(debugApiBaseUrl != defaultDebugApiBaseUrl) {

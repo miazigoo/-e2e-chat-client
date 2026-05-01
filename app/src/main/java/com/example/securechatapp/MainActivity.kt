@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.push.NotificationIntents
+import com.example.securechatapp.push.VisibleConversationTracker
 import com.example.securechatapp.ui.navigation.SecureChatNavHost
 import com.example.securechatapp.ui.theme.SecureChatAppTheme
 import com.example.securechatapp.ui.viewmodel.ThemeViewModel
@@ -32,6 +33,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var notificationPreferenceDataSource: NotificationPreferenceDataSource
+
+    @Inject
+    lateinit var visibleConversationTracker: VisibleConversationTracker
 
     private var pendingOpenConversationId by mutableStateOf<Int?>(null)
     private var pendingOpenRoute by mutableStateOf<String?>(null)
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
                 SecureChatNavHost(
                     openConversationId = pendingOpenConversationId,
                     openRoute = pendingOpenRoute,
+                    onVisibleConversationChanged = visibleConversationTracker::setConversationId,
                     onConversationHandled = { pendingOpenConversationId = null },
                     onRouteHandled = { pendingOpenRoute = null },
                 )
@@ -73,6 +78,16 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleNotificationIntent(intent)
         maybeRequestNotificationPermission()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        visibleConversationTracker.setAppVisible(true)
+    }
+
+    override fun onStop() {
+        visibleConversationTracker.setAppVisible(false)
+        super.onStop()
     }
 
     private fun handleNotificationIntent(intent: Intent?) {

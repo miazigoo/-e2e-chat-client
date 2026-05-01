@@ -75,3 +75,4 @@ pgdump_cms/*
 .codex
 /app/google-services.json
 /.gradle-user-home/
+/app/src/main/res/raw/caddy_root_ca.pem

@@ -950,6 +950,13 @@ private fun refreshSharedSecretState(
                     pendingMessages = pendingMessages,
                 )
             }.collect { merged ->
+                merged.lastOrNull()?.let { message ->
+                    chatCacheRepository.updateConversationLastMessagePreview(
+                        conversationId = conversationId,
+                        lastMessagePreview = buildLastMessagePreview(message),
+                        updatedAt = message.createdAt,
+                    )
+                }
                 val pinnedPreview = hydratePreviewFromMessages(
                     preview = _state.value.pinnedMessage,
                     messages = merged,
@@ -1068,8 +1075,7 @@ private fun refreshSharedSecretState(
             title
         }
         val lastPreview = currentState.messages.lastOrNull()?.let { message ->
-            message.text.takeIf { it.isNotBlank() }
-                ?: if (message.hasAttachments) "Вложение" else "Сообщение"
+            buildLastMessagePreview(message)
         } ?: "Нет сообщений"
 
         return ConversationListItem(
@@ -1092,6 +1098,23 @@ private fun refreshSharedSecretState(
             peerSharedSecretEnabled = currentState.peerSharedSecretEnabled,
             pinnedMessage = currentState.pinnedMessage,
         )
+    }
+
+    private fun buildLastMessagePreview(
+        message: ChatMessage,
+    ): String {
+        return message.text
+            .takeIf { it.isNotBlank() && it != "[attachment]" }
+            ?: if (message.hasAttachments) {
+                val attachments = message.attachments
+                when {
+                    attachments.isEmpty() -> "Вложение"
+                    attachments.size == 1 -> "📎 ${attachments.first().fileName}"
+                    else -> "📎 ${attachments.first().fileName} +${attachments.size - 1}"
+                }
+            } else {
+                "Сообщение"
+            }
     }
 
     private fun startOutboxFallback() {

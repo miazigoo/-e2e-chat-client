@@ -1,9 +1,15 @@
 package com.example.securechatapp.ui.screens.settings
 
-import android.content.Intent
+import android.Manifest
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.media.RingtoneManager
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,8 +60,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.push.NotificationSoundCatalog
 import com.example.securechatapp.ui.picker.SystemDocumentPickerActivity
 import com.example.securechatapp.ui.picker.SystemDocumentPickerBus
 import com.example.securechatapp.ui.theme.ThemePalette
@@ -78,7 +86,32 @@ fun SettingsScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showLogoutAllConfirm by remember { mutableStateOf(false) }
     var showRevokeConfirm by remember { mutableStateOf(false) }
+    var showSoundPicker by remember { mutableStateOf(false) }
     var google2faCode by remember { mutableStateOf("") }
+    var notificationsPermissionGranted by remember {
+        mutableStateOf(hasNotificationPermission(context))
+    }
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val pickedUri = result.data?.let { data ->
+            @Suppress("DEPRECATION")
+            data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        }
+        viewModel.setCustomSystemNotificationSound(pickedUri)
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        notificationsPermissionGranted = granted
+        if (!granted) {
+            Toast.makeText(
+                context,
+                "Без разрешения Android уведомления в шторке не будут показываться",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         SystemDocumentPickerBus.results.collectLatest { result ->
@@ -221,7 +254,62 @@ fun SettingsScreen(
                     title = "Push-уведомления",
                     subtitle = "Показывать уведомления на устройстве и синхронизировать настройку с сервером",
                     checked = state.pushNotificationsEnabled,
-                    onCheckedChange = viewModel::setPushNotificationsEnabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.setPushNotificationsEnabled(enabled)
+                        if (enabled && !notificationsPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                )
+
+                if (state.pushNotificationsEnabled && !notificationsPermissionGranted) {
+                    TextButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Запросить разрешение на уведомления")
+                    }
+                }
+
+                HorizontalDivider()
+
+                SettingRowWithAction(
+                    label = "Звук сообщений",
+                    value = state.notificationSoundLabel,
+                    actionText = "Выбрать",
+                    onActionClick = { showSoundPicker = true },
+                )
+
+                TextButton(
+                    onClick = {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(
+                                RingtoneManager.EXTRA_RINGTONE_TYPE,
+                                RingtoneManager.TYPE_NOTIFICATION,
+                            )
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            putExtra(
+                                RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                            )
+                        }
+                        ringtonePickerLauncher.launch(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Выбрать системный звук устройства")
+                }
+
+                ToggleRow(
+                    title = "Лёгкая вибрация",
+                    subtitle = "Короткая вибрация вместе со звуком уведомления о сообщении",
+                    checked = state.notificationVibrationEnabled,
+                    onCheckedChange = viewModel::setNotificationVibrationEnabled,
                 )
 
                 ToggleRow(
@@ -621,6 +709,28 @@ fun SettingsScreen(
             },
         )
     }
+
+    if (showSoundPicker) {
+        NotificationSoundPickerDialog(
+            selectedKey = state.notificationSoundKey,
+            onDismiss = { showSoundPicker = false },
+            onSelect = { soundKey ->
+                showSoundPicker = false
+                when (soundKey) {
+                    NotificationSoundCatalog.SYSTEM_DEFAULT_KEY -> viewModel.setDefaultNotificationSound()
+                    else -> viewModel.setBundledNotificationSound(soundKey)
+                }
+            },
+        )
+    }
+}
+
+private fun hasNotificationPermission(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.POST_NOTIFICATIONS,
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable
@@ -823,6 +933,64 @@ private fun PalettePreviewCard(
             )
         }
     }
+}
+
+@Composable
+private fun NotificationSoundPickerDialog(
+    selectedKey: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        },
+        title = {
+            Text("Звук уведомлений")
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                NotificationSoundCatalog.settingsOptions.forEach { option ->
+                    Surface(
+                        onClick = { onSelect(option.key) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selectedKey == option.key) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = option.label,
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (selectedKey == option.key) {
+                                Text(
+                                    text = "Выбрано",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable

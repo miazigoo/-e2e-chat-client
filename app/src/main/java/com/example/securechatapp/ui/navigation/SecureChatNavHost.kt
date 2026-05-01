@@ -33,6 +33,7 @@ private const val LOGIN_RESULT_REGISTERED_NICKNAME = "login_result_registered_ni
 fun SecureChatNavHost(
     openConversationId: Int? = null,
     openRoute: String? = null,
+    onVisibleConversationChanged: (Int?) -> Unit = {},
     onConversationHandled: () -> Unit = {},
     onRouteHandled: () -> Unit = {},
 ) {
@@ -78,6 +79,15 @@ fun SecureChatNavHost(
                 onRouteHandled()
             }
         }
+    }
+
+    LaunchedEffect(currentBackStackEntry) {
+        val visibleConversationId = if (currentRoute == Routes.ConversationPattern) {
+            currentBackStackEntry?.arguments?.getInt(Routes.ConversationArg)
+        } else {
+            null
+        }
+        onVisibleConversationChanged(visibleConversationId)
     }
 
     NavHost(

@@ -131,4 +131,16 @@ class ChatCacheRepository @Inject constructor(
             lastEventId = lastEventId,
         )
     }
+
+    suspend fun updateConversationLastMessagePreview(
+        conversationId: Int,
+        lastMessagePreview: String,
+        updatedAt: String?,
+    ) {
+        conversationsDao.updateLastMessagePreview(
+            conversationId = conversationId,
+            lastMessagePreview = lastMessagePreview,
+            updatedAt = updatedAt,
+        )
+    }
 }

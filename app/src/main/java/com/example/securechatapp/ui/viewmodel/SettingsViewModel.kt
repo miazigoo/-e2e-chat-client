@@ -14,6 +14,7 @@ import com.example.securechatapp.data.repository.AppUpdateRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.UpdateUserProfileInput
 import com.example.securechatapp.data.repository.UserProfileRepository
+import com.example.securechatapp.push.NotificationSoundCatalog
 import com.example.securechatapp.ui.theme.ThemePalette
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,6 +48,9 @@ data class SettingsUiState(
     val profileTheme: String = "system",
     val pushNotificationsEnabled: Boolean = true,
     val apkUpdateNotificationsEnabled: Boolean = true,
+    val notificationSoundKey: String = NotificationSoundCatalog.SYSTEM_DEFAULT_KEY,
+    val notificationSoundLabel: String = "Системный по умолчанию",
+    val notificationVibrationEnabled: Boolean = true,
     val google2faEnabled: Boolean = false,
     val pendingGoogle2faSecret: String? = null,
     val pendingGoogle2faProvisioningUri: String? = null,
@@ -161,6 +165,40 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(apkUpdateNotificationsEnabled = enabled) }
             }
         }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.messageNotificationSoundKeyFlow.collectLatest { soundKey ->
+                val customSoundUri = notificationPreferenceDataSource.getMessageNotificationCustomSoundUri()
+                _uiState.update {
+                    it.copy(
+                        notificationSoundKey = soundKey,
+                        notificationSoundLabel = NotificationSoundCatalog.resolveSelectedLabel(
+                            context = context,
+                            soundKey = soundKey,
+                            customSoundUri = customSoundUri,
+                        ),
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.messageNotificationCustomSoundUriFlow.collectLatest { customSoundUri ->
+                val soundKey = notificationPreferenceDataSource.getMessageNotificationSoundKey()
+                _uiState.update {
+                    it.copy(
+                        notificationSoundLabel = NotificationSoundCatalog.resolveSelectedLabel(
+                            context = context,
+                            soundKey = soundKey,
+                            customSoundUri = customSoundUri,
+                        ),
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            notificationPreferenceDataSource.messageNotificationVibrationEnabledFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(notificationVibrationEnabled = enabled) }
+            }
+        }
     }
 
     fun setDarkThemeEnabled(enabled: Boolean) {
@@ -207,6 +245,43 @@ class SettingsViewModel @Inject constructor(
     fun setApkUpdateNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             notificationPreferenceDataSource.setApkUpdateNotificationsEnabled(enabled)
+        }
+    }
+
+    fun setBundledNotificationSound(soundKey: String) {
+        viewModelScope.launch {
+            notificationPreferenceDataSource.setMessageNotificationSoundKey(soundKey)
+        }
+    }
+
+    fun setDefaultNotificationSound() {
+        viewModelScope.launch {
+            notificationPreferenceDataSource.setMessageNotificationSoundKey(
+                NotificationSoundCatalog.SYSTEM_DEFAULT_KEY,
+            )
+        }
+    }
+
+    fun setCustomSystemNotificationSound(uri: Uri?) {
+        viewModelScope.launch {
+            if (uri == null) {
+                notificationPreferenceDataSource.setMessageNotificationSoundKey(
+                    NotificationSoundCatalog.SYSTEM_DEFAULT_KEY,
+                )
+                notificationPreferenceDataSource.setMessageNotificationCustomSoundUri(null)
+                return@launch
+            }
+
+            notificationPreferenceDataSource.setMessageNotificationCustomSoundUri(uri.toString())
+            notificationPreferenceDataSource.setMessageNotificationSoundKey(
+                NotificationSoundCatalog.SYSTEM_PICKED_KEY,
+            )
+        }
+    }
+
+    fun setNotificationVibrationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            notificationPreferenceDataSource.setMessageNotificationVibrationEnabled(enabled)
         }
     }
 

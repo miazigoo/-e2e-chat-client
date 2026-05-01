@@ -56,6 +56,7 @@ class RealtimeWebSocketManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val stateMutex = Mutex()
+    private val recoveryMutex = Mutex()
 
     private var webSocket: WebSocket? = null
     private var isConnected: Boolean = false
@@ -72,8 +73,14 @@ class RealtimeWebSocketManager @Inject constructor(
             if (webSocket != null) return true
         }
 
-        if (consumeHttpSessionProbe()) {
-            runCatching { sessionRepository.heartbeat() }
+        val shouldRepeatProbe = consumeHttpSessionProbe()
+        runCatching {
+            sessionRepository.heartbeat()
+        }
+        if (shouldRepeatProbe) {
+            runCatching {
+                sessionRepository.heartbeat()
+            }
         }
 
         val session = sessionLocalDataSource.getSessionSnapshot()
@@ -131,7 +138,17 @@ class RealtimeWebSocketManager @Inject constructor(
                         if (statusCode == 401 || statusCode == 403) {
                             markShouldProbeHttpSession()
                         }
+                        val recovered = if (statusCode == 403) {
+                            attemptDeviceRecovery()
+                        } else {
+                            false
+                        }
                         handleSocketClosed(webSocket)
+                        if (recovered) {
+                            _events.emit(RealtimeEvent.Disconnected)
+                            connectIfNeeded()
+                            return@launch
+                        }
                         _events.emit(
                             RealtimeEvent.Error(
                                 statusCode = statusCode,
@@ -366,6 +383,14 @@ class RealtimeWebSocketManager @Inject constructor(
                 "Realtime недоступен: сервер не завершил подключение вовремя."
             else -> throwable.message?.trim().takeUnless { it.isNullOrEmpty() }
                 ?: "Realtime connection failed"
+        }
+    }
+
+    private suspend fun attemptDeviceRecovery(): Boolean {
+        return recoveryMutex.withLock {
+            runCatching {
+                sessionRepository.rebootstrapCurrentDevice()
+            }.getOrDefault(false)
         }
     }
 

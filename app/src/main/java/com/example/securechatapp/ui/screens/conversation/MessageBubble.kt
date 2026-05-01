@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.securechatapp.domain.model.AttachmentItem
@@ -125,21 +126,19 @@ fun MessageBubble(
     }
 
     val bodyText = if (msg.hasAttachments && msg.text == "[attachment]") {
-        "Вложение"
+        summarizeAttachments(msg.attachments)
     } else {
         msg.text
     }
     val imageAttachments = remember(msg.attachments) {
         msg.attachments.filter { it.isImage }
     }
-    val nonImageAttachmentCount = remember(msg.attachments) {
-        msg.attachments.count { !it.isImage }
+    val nonImageAttachments = remember(msg.attachments) {
+        msg.attachments.filter { !it.isImage }
     }
-    val shouldShowAttachmentButton = msg.hasAttachments && (
-            imageAttachments.isEmpty() || nonImageAttachmentCount > 0
-            )
+    val shouldShowAttachmentButton = msg.hasAttachments && msg.attachments.isEmpty()
     val shouldShowBodyText = bodyText.isNotBlank() && !(
-            bodyText == "Вложение" && imageAttachments.isNotEmpty()
+            msg.text == "[attachment]" && msg.attachments.isNotEmpty()
             )
 
     LaunchedEffect(imageAttachments) {
@@ -197,6 +196,14 @@ fun MessageBubble(
                             attachments = imageAttachments,
                             previews = inlineAttachmentPreviews,
                             onImageClick = onInlineImageClick,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    if (nonImageAttachments.isNotEmpty()) {
+                        InlineFileAttachmentsBlock(
+                            attachments = nonImageAttachments,
+                            onClick = onAttachmentsClick,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -442,6 +449,71 @@ private fun InlineImageAttachmentsBlock(
 }
 
 @Composable
+private fun InlineFileAttachmentsBlock(
+    attachments: List<AttachmentItem>,
+    onClick: () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        attachments.forEach { attachment ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onClick),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+                ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AttachmentFileIcon(
+                        fileName = attachment.fileName,
+                        mimeType = attachment.mimeType,
+                        contentDescription = attachment.fileName,
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = attachment.fileName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = describeAttachment(attachment),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                    Text(
+                        text = "Открыть",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun InlineImageAttachmentCard(
     attachment: AttachmentItem,
     preview: InlineAttachmentPreviewUi?,
@@ -620,6 +692,60 @@ private fun previewDisplayText(
         } else {
             "Сообщение"
         }
+    }
+}
+
+private fun summarizeAttachments(
+    attachments: List<AttachmentItem>,
+): String {
+    if (attachments.isEmpty()) return "Вложение"
+    if (attachments.size == 1) return attachments.first().fileName.ifBlank { "Вложение" }
+    val firstName = attachments.first().fileName.ifBlank { "Вложение" }
+    val remaining = attachments.size - 1
+    return "$firstName и ещё $remaining ${attachmentCountWord(remaining)}"
+}
+
+private fun describeAttachment(
+    attachment: AttachmentItem,
+): String {
+    val parts = buildList {
+        when {
+            attachment.mimeType?.startsWith("audio/") == true -> add("аудио")
+            attachment.mimeType?.startsWith("video/") == true -> add("видео")
+            attachment.mimeType?.isNotBlank() == true -> add(attachment.mimeType)
+        }
+        add(formatAttachmentSize(attachment.fileSize))
+    }
+    return parts.joinToString(" • ")
+}
+
+private fun formatAttachmentSize(
+    bytes: Long,
+): String {
+    if (bytes <= 0L) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var unitIndex = 0
+    while (value >= 1024.0 && unitIndex < units.lastIndex) {
+        value /= 1024.0
+        unitIndex++
+    }
+    return if (unitIndex == 0) {
+        "${value.toLong()} ${units[unitIndex]}"
+    } else {
+        String.format("%.1f %s", value, units[unitIndex])
+    }
+}
+
+private fun attachmentCountWord(
+    count: Int,
+): String {
+    val mod10 = count % 10
+    val mod100 = count % 100
+    return when {
+        mod10 == 1 && mod100 != 11 -> "файл"
+        mod10 in 2..4 && mod100 !in 12..14 -> "файла"
+        else -> "файлов"
     }
 }
 

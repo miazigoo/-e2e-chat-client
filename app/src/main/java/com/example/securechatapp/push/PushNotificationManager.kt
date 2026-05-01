@@ -2,9 +2,11 @@ package com.example.securechatapp.push
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.media.AudioAttributes
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,7 +16,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.example.securechatapp.MainActivity
 import com.example.securechatapp.R
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
@@ -31,9 +32,9 @@ class PushNotificationManager @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val notificationPreferenceDataSource: NotificationPreferenceDataSource,
+    private val visibleConversationTracker: VisibleConversationTracker,
 ) {
     suspend fun handle(payload: PushPayload) {
-        ensureChannels()
         when (payload) {
             is PushPayload.NewMessage -> showMessageNotification(payload)
             is PushPayload.AppUpdateAvailable -> showAppUpdateNotification(payload)
@@ -48,9 +49,20 @@ class PushNotificationManager @Inject constructor(
     private suspend fun showMessageNotification(payload: PushPayload.NewMessage) {
         if (!notificationPreferenceDataSource.isPushNotificationsEnabled()) return
         if (!canPostNotifications()) return
-        if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+        if (visibleConversationTracker.isViewingConversation(payload.conversationId)) {
+            cancel(buildConversationNotificationId(payload.conversationId))
             return
         }
+
+        val soundKey = notificationPreferenceDataSource.getMessageNotificationSoundKey()
+        val customSoundUri = notificationPreferenceDataSource.getMessageNotificationCustomSoundUri()
+        val vibrationEnabled = notificationPreferenceDataSource.isMessageNotificationVibrationEnabled()
+        val channelId = ensureMessageChannel(
+            soundKey = soundKey,
+            customSoundUri = customSoundUri,
+            vibrationEnabled = vibrationEnabled,
+        )
+        val soundUri = NotificationSoundCatalog.resolveSoundUri(context, soundKey, customSoundUri)
 
         val conversation = runCatching {
             conversationRepository.getConversation(payload.conversationId)
@@ -118,7 +130,7 @@ class PushNotificationManager @Inject constructor(
             .setConversationTitle(title)
             .addMessage(body, System.currentTimeMillis(), person)
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+        val notificationBuilder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_stat_secure_chat)
             .setContentTitle(title)
             .setContentText(body)
@@ -142,7 +154,16 @@ class PushNotificationManager @Inject constructor(
                     replyPendingIntent,
                 ).addRemoteInput(remoteInput).build()
             )
-            .build()
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            notificationBuilder.setSound(soundUri)
+            notificationBuilder.setVibrate(
+                if (vibrationEnabled) LIGHT_VIBRATION_PATTERN else longArrayOf(0L)
+            )
+            notificationBuilder.setDefaults(Notification.DEFAULT_LIGHTS)
+        }
+
+        val notification = notificationBuilder.build()
 
         notifySafely(notificationId, notification)
     }
@@ -150,6 +171,7 @@ class PushNotificationManager @Inject constructor(
     private suspend fun showAppUpdateNotification(payload: PushPayload.AppUpdateAvailable) {
         if (!notificationPreferenceDataSource.isApkUpdateNotificationsEnabled()) return
         if (!canPostNotifications()) return
+        ensureUpdatesChannel()
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -184,15 +206,8 @@ class PushNotificationManager @Inject constructor(
         notifySafely(NOTIFICATION_ID_APP_UPDATES, notification)
     }
 
-    private fun ensureChannels() {
+    private fun ensureUpdatesChannel() {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val messageChannel = NotificationChannel(
-            CHANNEL_MESSAGES,
-            "Сообщения",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Уведомления о новых сообщениях и быстрые действия"
-        }
         val updatesChannel = NotificationChannel(
             CHANNEL_UPDATES,
             "Обновления",
@@ -201,8 +216,39 @@ class PushNotificationManager @Inject constructor(
             description = "Уведомления о новых версиях приложения"
         }
 
-        manager.createNotificationChannel(messageChannel)
         manager.createNotificationChannel(updatesChannel)
+    }
+
+    private fun ensureMessageChannel(
+        soundKey: String,
+        customSoundUri: String?,
+        vibrationEnabled: Boolean,
+    ): String {
+        val channelId = buildMessageChannelId(soundKey, customSoundUri, vibrationEnabled)
+        val soundUri = NotificationSoundCatalog.resolveSoundUri(context, soundKey, customSoundUri)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val channel = NotificationChannel(
+            channelId,
+            "Сообщения",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Уведомления о новых сообщениях и быстрые действия"
+            enableVibration(vibrationEnabled)
+            vibrationPattern = if (vibrationEnabled) {
+                LIGHT_VIBRATION_PATTERN
+            } else {
+                longArrayOf(0L)
+            }
+            setSound(
+                soundUri,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+        }
+        manager.createNotificationChannel(channel)
+        return channelId
     }
 
     private fun canPostNotifications(): Boolean {
@@ -226,9 +272,26 @@ class PushNotificationManager @Inject constructor(
 
     private fun buildConversationNotificationId(conversationId: Int): Int = 20_000 + conversationId
 
+    private fun buildMessageChannelId(
+        soundKey: String,
+        customSoundUri: String?,
+        vibrationEnabled: Boolean,
+    ): String {
+        val soundSuffix = when (soundKey) {
+            NotificationSoundCatalog.SYSTEM_PICKED_KEY -> {
+                val digest = (customSoundUri ?: "default").hashCode().toUInt().toString(16)
+                "picked_$digest"
+            }
+            else -> soundKey
+        }
+        val vibrationSuffix = if (vibrationEnabled) "vibe" else "silentvibe"
+        return "${CHANNEL_MESSAGES}_${soundSuffix}_${vibrationSuffix}"
+    }
+
     private companion object {
         const val CHANNEL_MESSAGES = "secure_chat_messages"
         const val CHANNEL_UPDATES = "secure_chat_updates"
         const val NOTIFICATION_ID_APP_UPDATES = 10_001
+        val LIGHT_VIBRATION_PATTERN = longArrayOf(0L, 35L, 30L, 45L)
     }
 }

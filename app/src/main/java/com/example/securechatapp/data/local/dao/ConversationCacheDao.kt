@@ -94,4 +94,18 @@ interface ConversationCacheDao {
         conversationId: Int,
         lastEventId: Int?,
     )
+
+    @Query(
+        """
+        UPDATE conversations_cache
+        SET lastMessagePreview = :lastMessagePreview,
+            updatedAt = :updatedAt
+        WHERE conversationId = :conversationId
+        """
+    )
+    suspend fun updateLastMessagePreview(
+        conversationId: Int,
+        lastMessagePreview: String,
+        updatedAt: String?,
+    )
 }
