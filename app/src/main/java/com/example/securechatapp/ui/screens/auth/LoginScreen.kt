@@ -209,6 +209,8 @@ fun LoginScreen(
             Text(
                 if (state.isLoading) {
                     "Входим..."
+                } else if (state.requiresDeviceApproval) {
+                    "Проверить вход снова"
                 } else if (state.requiresTotp) {
                     "Подтвердить 2FA"
                 } else {

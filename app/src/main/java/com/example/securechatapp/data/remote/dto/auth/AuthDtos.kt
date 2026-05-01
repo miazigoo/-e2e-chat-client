@@ -31,6 +31,11 @@ data class LoginRequestDto(
     val password: String,
     @SerialName("device_uuid")
     val deviceUuid: String? = null,
+    @SerialName("device_name")
+    val deviceName: String? = null,
+    val platform: String? = null,
+    @SerialName("app_version")
+    val appVersion: String? = null,
     @SerialName("totp_code")
     val totpCode: String? = null,
 )
@@ -43,6 +48,10 @@ data class LoginResponseDto(
     val requiresTotp: Boolean = false,
     @SerialName("requires_bootstrap")
     val requiresBootstrap: Boolean = false,
+    @SerialName("requires_device_approval")
+    val requiresDeviceApproval: Boolean = false,
+    @SerialName("device_approval_request_id")
+    val deviceApprovalRequestId: String? = null,
     @SerialName("login_challenge_id")
     val loginChallengeId: String? = null,
     @SerialName("email_masked")
@@ -68,12 +77,21 @@ data class VerifyEmailCodeRequestDto(
     val code: String,
     @SerialName("device_uuid")
     val deviceUuid: String? = null,
+    @SerialName("device_name")
+    val deviceName: String? = null,
+    val platform: String? = null,
+    @SerialName("app_version")
+    val appVersion: String? = null,
 )
 
 @Serializable
 data class VerifyEmailCodeResponseDto(
     @SerialName("requires_bootstrap")
     val requiresBootstrap: Boolean = false,
+    @SerialName("requires_device_approval")
+    val requiresDeviceApproval: Boolean = false,
+    @SerialName("device_approval_request_id")
+    val deviceApprovalRequestId: String? = null,
     @SerialName("bootstrap_token")
     val bootstrapToken: String? = null,
     @SerialName("bootstrap_expires_in")

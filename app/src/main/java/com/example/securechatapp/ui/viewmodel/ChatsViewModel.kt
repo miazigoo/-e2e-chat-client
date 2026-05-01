@@ -208,6 +208,12 @@ class ChatsViewModel @Inject constructor(
                         refreshConversations()
                     }
 
+                    is RealtimeEvent.DeviceApprovalRequested -> {
+                        _state.value = _state.value.copy(
+                            info = "Новое устройство запрашивает доступ. Откройте настройки, чтобы подтвердить или отклонить вход.",
+                        )
+                    }
+
                     is RealtimeEvent.Error -> {
                         _state.value = _state.value.copy(
                             info = event.message

@@ -145,7 +145,7 @@ class ConversationRepository @Inject constructor(
             isSavedMessages -> title ?: "Избранное"
             !title.isNullOrBlank() -> title
             !peerNickname.isNullOrBlank() -> peerNickname
-            else -> "User $peerUserId"
+            else -> "Пользователь #$peerUserId"
         }
     }
 

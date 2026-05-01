@@ -6,6 +6,7 @@ import com.example.securechatapp.core.network.AuthInterceptor
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.remote.api.AuthApi
 import com.example.securechatapp.data.remote.api.ChatBackendApi
+import com.example.securechatapp.data.remote.api.DevicesApi
 import com.example.securechatapp.data.remote.api.KeysApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
@@ -125,5 +126,11 @@ object NetworkModule {
     fun provideKeysApi(
         retrofit: Retrofit,
     ): KeysApi = retrofit.create(KeysApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDevicesApi(
+        retrofit: Retrofit,
+    ): DevicesApi = retrofit.create(DevicesApi::class.java)
 
 }

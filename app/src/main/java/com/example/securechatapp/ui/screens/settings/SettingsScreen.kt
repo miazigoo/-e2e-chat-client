@@ -471,6 +471,85 @@ fun SettingsScreen(
                 )
             }
 
+            SectionCard(title = "Устройства") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Активные устройства и запросы на вход",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = viewModel::refreshDevices,
+                        enabled = !state.isLoadingDevices,
+                    ) {
+                        Text(if (state.isLoadingDevices) "Обновляем..." else "Обновить")
+                    }
+                }
+
+                InfoCard(
+                    title = "FCM регистрация",
+                    value = buildString {
+                        append(state.pushRegistrationStatus)
+                        state.pushRegistrationTokenPreview?.let {
+                            append("\nТокен: ")
+                            append(it)
+                            append("…")
+                        }
+                        state.pushRegistrationError?.takeIf { it.isNotBlank() }?.let {
+                            append("\nОшибка: ")
+                            append(it)
+                        }
+                    },
+                    isError = state.pushRegistrationError != null,
+                )
+
+                TextButton(
+                    onClick = viewModel::retryPushRegistration,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Повторить регистрацию FCM")
+                }
+
+                if (state.pendingDeviceRequests.isEmpty()) {
+                    InfoCard(
+                        title = "Запросы на авторизацию",
+                        value = "Новых запросов на вход нет",
+                    )
+                } else {
+                    state.pendingDeviceRequests.forEach { request ->
+                        DeviceAuthorizationRequestCard(
+                            request = request,
+                            busy = state.isResolvingDeviceRequest,
+                            onApprove = { viewModel.approveDeviceAuthorizationRequest(request.requestId) },
+                            onDeny = { viewModel.denyDeviceAuthorizationRequest(request.requestId) },
+                        )
+                    }
+                }
+
+                if (state.devices.isEmpty() && !state.isLoadingDevices) {
+                    InfoCard(
+                        title = "Активные устройства",
+                        value = "Список устройств пока пуст",
+                    )
+                } else {
+                    state.devices.forEach { device ->
+                        DeviceListItemCard(
+                            device = device,
+                            busy = state.isRevokingListedDevice,
+                            onRevoke = {
+                                if (!device.isCurrent) {
+                                    viewModel.revokeListedDevice(device.deviceId)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
             SectionCard(title = "Сеть и heartbeat") {
                 SettingRow("Последний heartbeat", state.lastHeartbeatAt)
 
@@ -731,6 +810,147 @@ private fun hasNotificationPermission(context: android.content.Context): Boolean
         context,
         Manifest.permission.POST_NOTIFICATIONS,
     ) == PackageManager.PERMISSION_GRANTED
+}
+
+@Composable
+private fun DeviceAuthorizationRequestCard(
+    request: com.example.securechatapp.domain.model.DeviceAuthorizationRequest,
+    busy: Boolean,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = request.deviceName?.ifBlank { "Неизвестное устройство" }
+                    ?: "Неизвестное устройство",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = listOfNotNull(
+                    request.platform?.takeIf { it.isNotBlank() },
+                    request.appVersion?.takeIf { it.isNotBlank() },
+                    request.ipAddress?.takeIf { it.isNotBlank() },
+                ).joinToString(" • ").ifBlank { request.deviceUuid },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Запрошено: ${request.requestedAt}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = onApprove,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Подтвердить")
+                }
+                Button(
+                    onClick = onDeny,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                ) {
+                    Text("Отклонить")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceListItemCard(
+    device: com.example.securechatapp.domain.model.AuthorizedDevice,
+    busy: Boolean,
+    onRevoke: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (device.isCurrent) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = buildString {
+                    append(device.deviceName.ifBlank { "Устройство" })
+                    if (device.isCurrent) append(" • текущее")
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = listOf(
+                    device.platform,
+                    device.appVersion,
+                    if (device.fcmTokenPresent) "FCM ok" else "FCM нет",
+                ).joinToString(" • "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Последний seen: ${device.lastSeenAt ?: "—"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = device.deviceUuid,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!device.isCurrent) {
+                Button(
+                    onClick = onRevoke,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                ) {
+                    Text("Отозвать устройство")
+                }
+            }
+        }
+    }
 }
 
 @Composable

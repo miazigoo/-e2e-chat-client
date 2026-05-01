@@ -11,6 +11,13 @@ sealed interface PushPayload {
         val eventType: String,
     ) : PushPayload
 
+    data class DeviceApprovalRequested(
+        val requestId: String,
+        val deviceName: String? = null,
+        val platform: String? = null,
+        val appVersion: String? = null,
+    ) : PushPayload
+
     data class AppUpdateAvailable(
         val versionName: String,
         val versionCode: Int,
@@ -46,6 +53,16 @@ fun parsePushPayload(data: Map<String, String>): PushPayload? {
             } else {
                 null
             }
+        }
+
+        "device_approval_requested" -> {
+            val requestId = data["request_id"]?.takeIf { it.isNotBlank() } ?: return null
+            PushPayload.DeviceApprovalRequested(
+                requestId = requestId,
+                deviceName = data["device_name"]?.takeIf { it.isNotBlank() },
+                platform = data["platform"]?.takeIf { it.isNotBlank() },
+                appVersion = data["app_version"]?.takeIf { it.isNotBlank() },
+            )
         }
 
         "app_update_available" -> {

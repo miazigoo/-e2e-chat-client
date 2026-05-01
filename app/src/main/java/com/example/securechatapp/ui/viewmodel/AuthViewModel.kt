@@ -17,6 +17,8 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val isAuthorized: Boolean = false,
     val requiresTotp: Boolean = false,
+    val requiresDeviceApproval: Boolean = false,
+    val deviceApprovalRequestId: String? = null,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
     val suggestedNickname: String? = null,
@@ -44,6 +46,8 @@ class AuthViewModel @Inject constructor(
                 suggestedNickname = if (keepSuggestedNickname) it.suggestedNickname else null,
                 debugCode = null,
                 emailMasked = null,
+                requiresDeviceApproval = false,
+                deviceApprovalRequestId = null,
             )
         }
     }
@@ -66,6 +70,8 @@ class AuthViewModel @Inject constructor(
                         debugCode = if (sessionExpired) null else it.debugCode,
                         emailMasked = if (sessionExpired) null else it.emailMasked,
                         requiresTotp = if (sessionExpired) false else it.requiresTotp,
+                        requiresDeviceApproval = if (sessionExpired) false else it.requiresDeviceApproval,
+                        deviceApprovalRequestId = if (sessionExpired) null else it.deviceApprovalRequestId,
                     )
                 }
                 hadAuthorizedSession = hadAuthorizedSession || isAuthorized
@@ -83,6 +89,8 @@ class AuthViewModel @Inject constructor(
                 suggestedNickname = nickname,
                 debugCode = null,
                 emailMasked = null,
+                requiresDeviceApproval = false,
+                deviceApprovalRequestId = null,
             )
         }
     }
@@ -158,6 +166,8 @@ class AuthViewModel @Inject constructor(
                     debugCode = null,
                     emailMasked = null,
                     requiresTotp = false,
+                    requiresDeviceApproval = false,
+                    deviceApprovalRequestId = null,
                     suggestedNickname = state.suggestedNickname,
                 )
             }
@@ -184,9 +194,12 @@ class AuthViewModel @Inject constructor(
                         emailMasked = data.emailMasked,
                         isAuthorized = !data.accessToken.isNullOrBlank(),
                         requiresTotp = data.requiresTotp,
+                        requiresDeviceApproval = data.requiresDeviceApproval,
+                        deviceApprovalRequestId = data.deviceApprovalRequestId,
                         suggestedNickname = _uiState.value.suggestedNickname,
                         infoMessage = when {
                             data.requiresTotp -> "Введите код из Google Authenticator"
+                            data.requiresDeviceApproval -> "Запрос на вход отправлен на уже авторизованное устройство. Подтвердите его там и повторите вход."
                             data.requiresEmailCode -> {
                                 data.emailMasked?.let { "Код отправлен на $it" }
                                     ?: "Введите код из письма"
@@ -255,11 +268,15 @@ class AuthViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isAuthorized = authorized,
+                        requiresDeviceApproval = result.data.requiresDeviceApproval,
+                        deviceApprovalRequestId = result.data.deviceApprovalRequestId,
                         suggestedNickname = if (authorized) null else _uiState.value.suggestedNickname,
-                        infoMessage = if (!authorized && result.data.requiresBootstrap) {
-                            "Устройство зарегистрировано. Повтори вход."
-                        } else {
-                            null
+                        infoMessage = when {
+                            !authorized && result.data.requiresDeviceApproval ->
+                                "Запрос на вход отправлен на уже авторизованное устройство. Подтвердите его там и повторите вход."
+                            !authorized && result.data.requiresBootstrap ->
+                                "Устройство зарегистрировано. Повтори вход."
+                            else -> null
                         },
                     )
 

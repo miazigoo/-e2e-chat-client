@@ -12,6 +12,8 @@ data class LoginResult(
     val requiresEmailCode: Boolean,
     val requiresTotp: Boolean,
     val requiresBootstrap: Boolean,
+    val requiresDeviceApproval: Boolean,
+    val deviceApprovalRequestId: String?,
     val loginChallengeId: String?,
     val emailMasked: String?,
     val debugCode: String?,
@@ -24,6 +26,8 @@ data class LoginResult(
 
 data class VerifyEmailCodeResult(
     val requiresBootstrap: Boolean,
+    val requiresDeviceApproval: Boolean,
+    val deviceApprovalRequestId: String?,
     val bootstrapToken: String?,
     val bootstrapExpiresIn: Int?,
     val accessToken: String?,

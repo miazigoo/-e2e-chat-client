@@ -187,6 +187,17 @@ class AppRuntimeManager @Inject constructor(
                 }
             }
 
+            is RealtimeEvent.DeviceApprovalRequested -> {
+                pushNotificationManager.handle(
+                    PushPayload.DeviceApprovalRequested(
+                        requestId = event.requestId,
+                        deviceName = event.deviceName,
+                        platform = event.platform,
+                        appVersion = event.appVersion,
+                    )
+                )
+            }
+
             else -> Unit
         }
     }

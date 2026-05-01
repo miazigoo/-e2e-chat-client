@@ -6,6 +6,7 @@ import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.data.repository.DeviceRepository
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
@@ -14,7 +15,10 @@ import com.example.securechatapp.data.repository.AppUpdateRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.UpdateUserProfileInput
 import com.example.securechatapp.data.repository.UserProfileRepository
+import com.example.securechatapp.domain.model.AuthorizedDevice
+import com.example.securechatapp.domain.model.DeviceAuthorizationRequest
 import com.example.securechatapp.push.NotificationSoundCatalog
+import com.example.securechatapp.push.PushRegistrationManager
 import com.example.securechatapp.ui.theme.ThemePalette
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +46,8 @@ data class SettingsUiState(
     val sessionStatus: String = "Не авторизован",
     val deviceUuid: String = "—",
     val accessTokenExpiresAt: String = "—",
+    val devices: List<AuthorizedDevice> = emptyList(),
+    val pendingDeviceRequests: List<DeviceAuthorizationRequest> = emptyList(),
     val avatarUrl: String? = null,
     val avatarUpdatedAt: String = "—",
     val languageCode: String = "ru",
@@ -63,6 +69,9 @@ data class SettingsUiState(
     val darkThemeEnabled: Boolean = false,
     val colorScheme: ThemePalette = ThemePalette.TELEGRAM,
     val isLoadingProfile: Boolean = false,
+    val isLoadingDevices: Boolean = false,
+    val isResolvingDeviceRequest: Boolean = false,
+    val isRevokingListedDevice: Boolean = false,
     val isSavingProfile: Boolean = false,
     val isUploadingAvatar: Boolean = false,
     val lastHeartbeatAt: String = "ещё не отправлялся",
@@ -78,6 +87,9 @@ data class SettingsUiState(
     val latestVersionCode: Int? = null,
     val latestVersionChangelog: String? = null,
     val isCheckingForUpdates: Boolean = false,
+    val pushRegistrationStatus: String = "Не запускалась",
+    val pushRegistrationTokenPreview: String? = null,
+    val pushRegistrationError: String? = null,
     val error: String? = null,
     val info: String? = null,
 )
@@ -89,6 +101,8 @@ class SettingsViewModel @Inject constructor(
     private val themePreferenceDataSource: ThemePreferenceDataSource,
     private val notificationPreferenceDataSource: NotificationPreferenceDataSource,
     private val sessionRepository: SessionRepository,
+    private val deviceRepository: DeviceRepository,
+    private val pushRegistrationManager: PushRegistrationManager,
     private val userProfileRepository: UserProfileRepository,
     private val appUpdateRepository: AppUpdateRepository,
 ) : ViewModel() {
@@ -102,7 +116,9 @@ class SettingsViewModel @Inject constructor(
         observeSession()
         observeTheme()
         observeNotificationPreferences()
+        observePushRegistrationState()
         refreshProfile()
+        refreshDevices()
         checkForAppUpdates()
     }
 
@@ -201,6 +217,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun observePushRegistrationState() {
+        viewModelScope.launch {
+            pushRegistrationManager.state.collectLatest { state ->
+                _uiState.update {
+                    it.copy(
+                        pushRegistrationStatus = state.status,
+                        pushRegistrationTokenPreview = state.tokenPreview,
+                        pushRegistrationError = state.lastError,
+                    )
+                }
+            }
+        }
+    }
+
     fun setDarkThemeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themePreferenceDataSource.setDarkThemeEnabled(enabled)
@@ -238,7 +268,16 @@ class SettingsViewModel @Inject constructor(
             notificationPreferenceDataSource.setPushNotificationsEnabled(enabled)
             if (enabled) {
                 notificationPreferenceDataSource.resetNotificationPermissionPrompt()
+                pushRegistrationManager.forceResyncCurrentToken()
+                refreshDevices()
             }
+        }
+    }
+
+    fun retryPushRegistration() {
+        viewModelScope.launch {
+            pushRegistrationManager.forceResyncCurrentToken()
+            refreshDevices()
         }
     }
 
@@ -505,6 +544,129 @@ class SettingsViewModel @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    fun refreshDevices() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoadingDevices = true,
+                    error = null,
+                )
+            }
+
+            runCatching {
+                deviceRepository.listDevices() to deviceRepository.listAuthorizationRequests()
+            }.onSuccess { (devices, requests) ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingDevices = false,
+                        devices = devices,
+                        pendingDeviceRequests = requests,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingDevices = false,
+                        error = error.message ?: "Не удалось загрузить устройства",
+                    )
+                }
+            }
+        }
+    }
+
+    fun approveDeviceAuthorizationRequest(requestId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isResolvingDeviceRequest = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching {
+                deviceRepository.approveAuthorizationRequest(requestId)
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        isResolvingDeviceRequest = false,
+                        info = "Новое устройство подтверждено. На нём можно повторить вход.",
+                    )
+                }
+                refreshDevices()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isResolvingDeviceRequest = false,
+                        error = error.message ?: "Не удалось подтвердить устройство",
+                    )
+                }
+            }
+        }
+    }
+
+    fun denyDeviceAuthorizationRequest(requestId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isResolvingDeviceRequest = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching {
+                deviceRepository.denyAuthorizationRequest(requestId)
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        isResolvingDeviceRequest = false,
+                        info = "Запрос на новое устройство отклонён.",
+                    )
+                }
+                refreshDevices()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isResolvingDeviceRequest = false,
+                        error = error.message ?: "Не удалось отклонить устройство",
+                    )
+                }
+            }
+        }
+    }
+
+    fun revokeListedDevice(deviceId: Int) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isRevokingListedDevice = true,
+                    error = null,
+                    info = null,
+                )
+            }
+
+            runCatching {
+                deviceRepository.revokeDevice(deviceId)
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        isRevokingListedDevice = false,
+                        info = "Устройство отозвано.",
+                    )
+                }
+                refreshDevices()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isRevokingListedDevice = false,
+                        error = error.message ?: "Не удалось отозвать устройство",
+                    )
+                }
+            }
         }
     }
 

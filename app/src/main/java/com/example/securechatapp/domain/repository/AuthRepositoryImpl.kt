@@ -2,6 +2,7 @@ package com.example.securechatapp.data.repository
 
 import android.os.Build
 import android.util.Log
+import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.core.result.AppResult
 import com.example.securechatapp.crypto.signal.SignalBootstrapKeyMaterialProvider
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
@@ -103,6 +104,7 @@ class AuthRepositoryImpl @Inject constructor(
         totpCode: String?,
     ): AppResult<LoginResult> {
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
+        val deviceName = buildDeviceName()
 
         return try {
             var bootstrapAttempts = 0
@@ -113,6 +115,9 @@ class AuthRepositoryImpl @Inject constructor(
                         nickname = nickname,
                         password = password,
                         deviceUuid = stableDeviceUuid,
+                        deviceName = deviceName,
+                        platform = DEVICE_PLATFORM,
+                        appVersion = BuildConfig.VERSION_NAME,
                         totpCode = totpCode?.trim()?.takeIf { it.isNotEmpty() },
                     )
                 )
@@ -122,6 +127,7 @@ class AuthRepositoryImpl @Inject constructor(
                     "login: response requiresEmailCode=${data.requiresEmailCode} " +
                             "requiresTotp=${data.requiresTotp} " +
                             "requiresBootstrap=${data.requiresBootstrap} " +
+                            "requiresDeviceApproval=${data.requiresDeviceApproval} " +
                             "challengeIdPresent=${!data.loginChallengeId.isNullOrBlank()} " +
                             "emailMasked=${data.emailMasked ?: "<none>"} " +
                             "debugCodePresent=${!data.debugCode.isNullOrBlank()} " +
@@ -145,6 +151,8 @@ class AuthRepositoryImpl @Inject constructor(
                                 requiresEmailCode = data.requiresEmailCode,
                                 requiresTotp = data.requiresTotp,
                                 requiresBootstrap = data.requiresBootstrap,
+                                requiresDeviceApproval = data.requiresDeviceApproval,
+                                deviceApprovalRequestId = data.deviceApprovalRequestId,
                                 loginChallengeId = data.loginChallengeId,
                                 emailMasked = data.emailMasked,
                                 debugCode = data.debugCode,
@@ -260,6 +268,7 @@ class AuthRepositoryImpl @Inject constructor(
         deviceUuid: String?,
     ): AppResult<VerifyEmailCodeResult> {
         val stableDeviceUuid = deviceUuid ?: sessionLocalDataSource.getOrCreateDeviceUuid()
+        val deviceName = buildDeviceName()
 
         return try {
             val response = authApi.verifyEmailCode(
@@ -267,12 +276,16 @@ class AuthRepositoryImpl @Inject constructor(
                     loginChallengeId = loginChallengeId,
                     code = code,
                     deviceUuid = stableDeviceUuid,
+                    deviceName = deviceName,
+                    platform = DEVICE_PLATFORM,
+                    appVersion = BuildConfig.VERSION_NAME,
                 )
             )
 
             val data = response.data
             debugLog(
                 "verifyEmailCode: response requiresBootstrap=${data.requiresBootstrap} " +
+                        "requiresDeviceApproval=${data.requiresDeviceApproval} " +
                         "bootstrapTokenPresent=${!data.bootstrapToken.isNullOrBlank()} " +
                         "accessTokenPresent=${!data.accessToken.isNullOrBlank()}",
             )
@@ -299,6 +312,8 @@ class AuthRepositoryImpl @Inject constructor(
             AppResult.Success(
                 VerifyEmailCodeResult(
                     requiresBootstrap = data.requiresBootstrap,
+                    requiresDeviceApproval = data.requiresDeviceApproval,
+                    deviceApprovalRequestId = data.deviceApprovalRequestId,
                     bootstrapToken = data.bootstrapToken,
                     bootstrapExpiresIn = data.bootstrapExpiresIn,
                     accessToken = data.accessToken,
@@ -325,7 +340,7 @@ class AuthRepositoryImpl @Inject constructor(
         bootstrapToken: String,
         deviceUuid: String,
     ) {
-        val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        val deviceName = buildDeviceName()
         debugLog("bootstrapDevice: requesting Signal bootstrap material")
         val signalMaterial = signalBootstrapKeyMaterialProvider.getOrCreateBootstrapMaterial(
             oneTimePreKeyCount = 100,
@@ -340,8 +355,8 @@ class AuthRepositoryImpl @Inject constructor(
             body = BootstrapDeviceRequestDto(
                 deviceUuid = deviceUuid,
                 deviceName = deviceName.ifBlank { "Android device" },
-                platform = "android",
-                appVersion = "1.0.0",
+                platform = DEVICE_PLATFORM,
+                appVersion = BuildConfig.VERSION_NAME,
                 registrationId = signalMaterial.registrationId,
                 publicIdentityKey = signalMaterial.publicIdentityKey,
                 publicSigningKey = signalMaterial.publicSigningKey,
@@ -454,8 +469,15 @@ class AuthRepositoryImpl @Inject constructor(
             code == "HTTP_503" && normalized.equals("HTTP 503", ignoreCase = true) ->
                 "Сервис временно недоступен. Попробуйте позже."
 
+            code == "DEVICE_APPROVAL_DENIED" ->
+                "Подтверждение нового устройства было отклонено."
+
             else -> normalized
         }
+    }
+
+    private fun buildDeviceName(): String {
+        return "${Build.MANUFACTURER} ${Build.MODEL}".trim().ifBlank { "Android device" }
     }
 
     private fun debugLog(message: String) {
@@ -474,5 +496,6 @@ class AuthRepositoryImpl @Inject constructor(
 
     private companion object {
         const val MAX_BOOTSTRAP_ATTEMPTS = 2
+        const val DEVICE_PLATFORM = "android"
     }
 }

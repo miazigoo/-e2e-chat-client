@@ -38,6 +38,7 @@ class PushNotificationManager @Inject constructor(
     suspend fun handle(payload: PushPayload) {
         when (payload) {
             is PushPayload.NewMessage -> showMessageNotification(payload)
+            is PushPayload.DeviceApprovalRequested -> showDeviceApprovalNotification(payload)
             is PushPayload.AppUpdateAvailable -> showAppUpdateNotification(payload)
             is PushPayload.ConversationEvent -> Unit
         }
@@ -198,6 +199,58 @@ class PushNotificationManager @Inject constructor(
         notifySafely(NOTIFICATION_ID_APP_UPDATES, notification)
     }
 
+    private suspend fun showDeviceApprovalNotification(
+        payload: PushPayload.DeviceApprovalRequested,
+    ) {
+        if (!notificationPreferenceDataSource.isPushNotificationsEnabled()) return
+        if (!canPostNotifications()) return
+
+        val soundKey = notificationPreferenceDataSource.getMessageNotificationSoundKey()
+        val customSoundUri = notificationPreferenceDataSource.getMessageNotificationCustomSoundUri()
+        val vibrationEnabled = notificationPreferenceDataSource.isMessageNotificationVibrationEnabled()
+        val channelId = ensureMessageChannel(
+            soundKey = soundKey,
+            customSoundUri = customSoundUri,
+            vibrationEnabled = vibrationEnabled,
+        )
+        val soundUri = NotificationSoundCatalog.resolveSoundUri(context, soundKey, customSoundUri)
+
+        val body = buildDeviceApprovalBody(payload)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(NotificationIntents.EXTRA_OPEN_ROUTE, Routes.Settings)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID_DEVICE_APPROVAL_BASE + payload.requestId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_stat_secure_chat)
+            .setContentTitle("Новое устройство запрашивает доступ")
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            builder.setSound(soundUri)
+            builder.setVibrate(
+                if (vibrationEnabled) LIGHT_VIBRATION_PATTERN else longArrayOf(0L)
+            )
+            builder.setDefaults(Notification.DEFAULT_LIGHTS)
+        }
+
+        notifySafely(
+            NOTIFICATION_ID_DEVICE_APPROVAL_BASE + payload.requestId.hashCode(),
+            builder.build(),
+        )
+    }
+
     private fun ensureUpdatesChannel() {
         val manager = context.getSystemService(NotificationManager::class.java)
         val updatesChannel = NotificationChannel(
@@ -286,6 +339,27 @@ class PushNotificationManager @Inject constructor(
         }
     }
 
+    private fun buildDeviceApprovalBody(
+        payload: PushPayload.DeviceApprovalRequested,
+    ): String {
+        val primary = payload.deviceName?.takeIf { it.isNotBlank() }
+            ?: "Неизвестное устройство"
+        val secondary = listOfNotNull(
+            payload.platform?.takeIf { it.isNotBlank() },
+            payload.appVersion?.takeIf { it.isNotBlank() },
+        ).joinToString(" • ")
+
+        return buildString {
+            append(primary)
+            if (secondary.isNotBlank()) {
+                append(" (")
+                append(secondary)
+                append(")")
+            }
+            append(". Откройте настройки и подтвердите вход.")
+        }
+    }
+
     private fun canPostNotifications(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         return ContextCompat.checkSelfPermission(
@@ -327,6 +401,7 @@ class PushNotificationManager @Inject constructor(
         const val CHANNEL_MESSAGES = "secure_chat_messages"
         const val CHANNEL_UPDATES = "secure_chat_updates"
         const val NOTIFICATION_ID_APP_UPDATES = 10_001
+        const val NOTIFICATION_ID_DEVICE_APPROVAL_BASE = 30_000
         val LIGHT_VIBRATION_PATTERN = longArrayOf(0L, 35L, 30L, 45L)
         const val MESSAGE_LOOKUP_ATTEMPTS = 5
         const val MESSAGE_LOOKUP_RETRY_DELAY_MS = 450L

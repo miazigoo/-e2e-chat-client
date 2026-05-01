@@ -38,6 +38,13 @@ sealed interface RealtimeEvent {
         val eventType: String,
         val targetMessageId: Int? = null,
     ) : RealtimeEvent
+    data class DeviceApprovalRequested(
+        val requestId: String,
+        val deviceUuid: String? = null,
+        val deviceName: String? = null,
+        val platform: String? = null,
+        val appVersion: String? = null,
+    ) : RealtimeEvent
     data class AppUpdateAvailable(
         val release: AppReleaseInfo,
     ) : RealtimeEvent
@@ -308,6 +315,19 @@ class RealtimeWebSocketManager @Inject constructor(
                         conversationId = conversationId,
                         eventType = eventType,
                         targetMessageId = targetMessageId,
+                    )
+                )
+            }
+
+            "device_approval_requested" -> {
+                val requestId = parsed["request_id"]?.jsonPrimitive?.contentOrNull ?: return
+                _events.emit(
+                    RealtimeEvent.DeviceApprovalRequested(
+                        requestId = requestId,
+                        deviceUuid = parsed["device_uuid"]?.jsonPrimitive?.contentOrNull,
+                        deviceName = parsed["device_name"]?.jsonPrimitive?.contentOrNull,
+                        platform = parsed["platform"]?.jsonPrimitive?.contentOrNull,
+                        appVersion = parsed["app_version"]?.jsonPrimitive?.contentOrNull,
                     )
                 )
             }
