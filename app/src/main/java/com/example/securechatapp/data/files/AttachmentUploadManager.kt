@@ -22,8 +22,10 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import retrofit2.HttpException
+import okio.Buffer
+import okio.BufferedSink
 
 data class UploadedEncryptedAttachment(
     val attachmentId: Int,
@@ -88,7 +90,7 @@ class AttachmentUploadManager @Inject constructor(
 
         val requestBuilder = Request.Builder()
             .url(uploadUrl)
-            .put(fileBytes.toRequestBody(mimeType.toMediaTypeOrNull()))
+            .put(fileBytes.toProgressRequestBody(mimeType))
 
         item.uploadHeaders.forEach { (key, value) ->
             requestBuilder.header(key, value)
@@ -121,6 +123,7 @@ class AttachmentUploadManager @Inject constructor(
     suspend fun uploadSingleEncryptedAttachment(
         conversationId: Int,
         uri: Uri,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
     ): UploadedEncryptedAttachment = withContext(Dispatchers.IO) {
         val plainBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Не удалось прочитать файл")
@@ -169,7 +172,11 @@ class AttachmentUploadManager @Inject constructor(
 
         val requestBuilder = Request.Builder()
             .url(uploadUrl)
-            .put(encryptedBlob.ciphertext.toRequestBody(mimeType.toMediaTypeOrNull()))
+            .put(
+                encryptedBlob.ciphertext.toProgressRequestBody(mimeType) { written, total ->
+                    onProgress(written, total)
+                }
+            )
 
         item.uploadHeaders.forEach { (key, value) ->
             requestBuilder.header(key, value)
@@ -210,12 +217,70 @@ class AttachmentUploadManager @Inject constructor(
     suspend fun uploadEncryptedAttachments(
         conversationId: Int,
         uris: List<Uri>,
+        onProgress: (Int) -> Unit = {},
     ): List<UploadedEncryptedAttachment> {
-        return uris.map { uri ->
+        if (uris.isEmpty()) {
+            onProgress(100)
+            return emptyList()
+        }
+
+        val weights = uris.map { uri ->
+            querySize(uri)?.coerceAtLeast(1L) ?: 1L
+        }
+        val totalWeight = weights.sum().coerceAtLeast(1L)
+        var uploadedWeight = 0L
+        onProgress(0)
+
+        return uris.mapIndexed { index, uri ->
+            val currentWeight = weights[index]
             uploadSingleEncryptedAttachment(
                 conversationId = conversationId,
                 uri = uri,
+                onProgress = { written, total ->
+                    val fraction = if (total <= 0L) 0.0 else written.toDouble() / total.toDouble()
+                    val weightedUploaded = uploadedWeight + (currentWeight * fraction).toLong()
+                    val percent = ((weightedUploaded.toDouble() / totalWeight.toDouble()) * 100.0)
+                        .toInt()
+                        .coerceIn(0, 100)
+                    onProgress(percent)
+                },
             )
+                .also {
+                    uploadedWeight += currentWeight
+                    val percent = ((uploadedWeight.toDouble() / totalWeight.toDouble()) * 100.0)
+                        .toInt()
+                        .coerceIn(0, 100)
+                    onProgress(percent)
+                }
+        }
+    }
+
+    private fun ByteArray.toProgressRequestBody(
+        mimeType: String,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): RequestBody {
+        val contentType = mimeType.toMediaTypeOrNull()
+        val data = this
+        return object : RequestBody() {
+            override fun contentType() = contentType
+
+            override fun contentLength(): Long = data.size.toLong()
+
+            override fun writeTo(sink: BufferedSink) {
+                val total = data.size.toLong()
+                var written = 0L
+                val buffer = Buffer()
+                val chunkSize = 8 * 1024
+
+                while (written < total) {
+                    val remaining = (total - written).toInt()
+                    val byteCount = minOf(chunkSize, remaining)
+                    buffer.write(data, written.toInt(), byteCount)
+                    sink.write(buffer, byteCount.toLong())
+                    written += byteCount
+                    onProgress(written, total)
+                }
+            }
         }
     }
 

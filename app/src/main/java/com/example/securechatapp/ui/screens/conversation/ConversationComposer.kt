@@ -1,6 +1,7 @@
 package com.example.securechatapp.ui.screens.conversation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,8 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.securechatapp.domain.model.MessagePreview
+import com.example.securechatapp.ui.theme.SecureChatTheme
 
 @Composable
 fun ConversationComposer(
@@ -48,17 +51,18 @@ fun ConversationComposer(
 ) {
     var emojiExpanded by remember { mutableStateOf(false) }
     val quickEmojis = remember { listOf("😀", "😂", "🔥", "❤️", "👍", "🎉", "😮", "😢") }
+    val extraColors = SecureChatTheme.extras
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .imePadding(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = extraColors.topBar,
         tonalElevation = 2.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 6.dp,
     ) {
-        androidx.compose.foundation.layout.Column(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -95,87 +99,94 @@ fun ConversationComposer(
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Surface(
-                    modifier = Modifier.size(46.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Button(
-                        onClick = onAttachClick,
-                        enabled = inputEnabled,
-                        shape = CircleShape,
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Text("📎")
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Box {
-                    Surface(
-                        modifier = Modifier.size(46.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Button(
-                            onClick = { emojiExpanded = true },
-                            enabled = inputEnabled && !isUploading,
-                            shape = CircleShape,
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        ) {
-                            Text("😊")
-                        }
-                    }
-
-                    DropdownMenu(
-                        expanded = emojiExpanded,
-                        onDismissRequest = { emojiExpanded = false },
-                    ) {
-                        quickEmojis.forEach { emoji ->
-                            DropdownMenuItem(
-                                text = { Text(emoji) },
-                                onClick = {
-                                    emojiExpanded = false
-                                    val suffix = if (message.isBlank() || message.endsWith(" ")) emoji else " $emoji"
-                                    onMessageChange(message + suffix)
-                                },
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(26.dp),
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 1.dp,
                 ) {
-                    OutlinedTextField(
-                        value = message,
-                        onValueChange = onMessageChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(placeholder) },
-                        enabled = inputEnabled && !isUploading,
-                        minLines = 1,
-                        maxLines = 4,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                        ),
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(40.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                        ) {
+                            Button(
+                                onClick = onAttachClick,
+                                enabled = inputEnabled,
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.fillMaxSize(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            ) {
+                                Text("📎")
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = message,
+                            onValueChange = onMessageChange,
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text(placeholder) },
+                            enabled = inputEnabled && !isUploading,
+                            minLines = 1,
+                            maxLines = 4,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                disabledBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                            ),
+                        )
+
+                        Box {
+                            Surface(
+                                modifier = Modifier.size(40.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                            ) {
+                                Button(
+                                    onClick = { emojiExpanded = true },
+                                    enabled = inputEnabled && !isUploading,
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.fillMaxSize(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                                        contentColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                ) {
+                                    Text("😊")
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = emojiExpanded,
+                                onDismissRequest = { emojiExpanded = false },
+                            ) {
+                                quickEmojis.forEach { emoji ->
+                                    DropdownMenuItem(
+                                        text = { Text(emoji) },
+                                        onClick = {
+                                            emojiExpanded = false
+                                            val suffix = if (message.isBlank() || message.endsWith(" ")) emoji else " $emoji"
+                                            onMessageChange(message + suffix)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))

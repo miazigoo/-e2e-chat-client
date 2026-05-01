@@ -27,6 +27,7 @@ fun ConversationCacheEntity.toConversationListItem(): ConversationListItem {
         deleteAfterReadSeconds = deleteAfterReadSeconds,
         isActive = isActive,
         isPurged = isPurged,
+        isPinned = isPinned,
         updatedAt = updatedAt,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
@@ -50,6 +51,7 @@ fun ConversationCacheEntity.toConversationDetails(): ConversationDetails {
         peerSharedSecretEnabled = peerSharedSecretEnabled,
         isActive = isActive,
         isPurged = isPurged,
+        isPinned = isPinned,
         pinnedMessage = decodeMessagePreviewJson(pinnedMessageJson),
     )
 }
@@ -70,6 +72,7 @@ fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): Conversat
         deleteAfterReadSeconds = deleteAfterReadSeconds,
         isActive = isActive,
         isPurged = isPurged,
+        isPinned = isPinned,
         lastEventId = previous?.lastEventId,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,
@@ -94,6 +97,7 @@ fun ConversationDetails.toEntity(previous: ConversationCacheEntity?): Conversati
         deleteAfterReadSeconds = deleteAfterReadSeconds,
         isActive = isActive,
         isPurged = isPurged,
+        isPinned = isPinned,
         lastEventId = previous?.lastEventId,
         sharedSecretEnabled = sharedSecretEnabled,
         sharedSecretFingerprint = sharedSecretFingerprint,

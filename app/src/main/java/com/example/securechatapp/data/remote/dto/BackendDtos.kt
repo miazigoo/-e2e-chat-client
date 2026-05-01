@@ -376,6 +376,8 @@ data class ConversationListItemDto(
     val isActive: Boolean = true,
     @SerialName("is_purged")
     val isPurged: Boolean = false,
+    @SerialName("is_pinned")
+    val isPinned: Boolean = false,
     @SerialName("updated_at")
     val updatedAt: String? = null,
     @SerialName("last_message")
@@ -426,8 +428,29 @@ data class GetConversationResponseDto(
     val isActive: Boolean = true,
     @SerialName("is_purged")
     val isPurged: Boolean = false,
+    @SerialName("is_pinned")
+    val isPinned: Boolean = false,
     @SerialName("pinned_message")
     val pinnedMessage: MessagePreviewDto? = null,
+)
+
+@Serializable
+data class PinConversationResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    @SerialName("is_pinned")
+    val isPinned: Boolean,
+)
+
+@Serializable
+data class DeleteConversationResponseDto(
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    val deleted: Boolean,
+    @SerialName("deleted_messages_count")
+    val deletedMessagesCount: Int = 0,
+    @SerialName("deleted_attachment_ids")
+    val deletedAttachmentIds: List<Int> = emptyList(),
 )
 
 

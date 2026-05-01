@@ -13,6 +13,7 @@ import com.example.securechatapp.data.local.entity.PendingMessageOutboxEntity
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessagePreview
+import com.example.securechatapp.domain.model.MessageSendPhase
 import com.example.securechatapp.domain.model.MessageSendStatus
 import java.util.UUID
 import javax.inject.Inject
@@ -21,6 +22,7 @@ import kotlin.math.absoluteValue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 data class PendingOutgoingMessage(
@@ -31,10 +33,13 @@ data class PendingOutgoingMessage(
     val plainText: String,
     val replyToMessageId: Int?,
     val replyPreview: MessagePreview?,
+    val localAttachmentUris: List<String>,
     val attachmentIds: List<Int>,
     val attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     val createdAt: String,
     val status: MessageSendStatus,
+    val sendPhase: MessageSendPhase?,
+    val sendProgress: Int?,
     val errorMessage: String? = null,
 )
 
@@ -61,6 +66,8 @@ class OutboxRepository @Inject constructor(
         plainText: String,
         replyToMessageId: Int?,
         replyPreview: MessagePreview?,
+        localAttachmentUris: List<String>,
+        attachmentPreviews: List<AttachmentItem>,
         attachmentIds: List<Int>,
         attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     ): Int {
@@ -68,8 +75,12 @@ class OutboxRepository @Inject constructor(
         val createdAt = crypto.nowIso()
         val clientMessageUuid = UUID.randomUUID().toString()
 
-        val attachmentPreviews = attachmentDescriptors.map { descriptor ->
-            descriptorToPreviewAttachment(descriptor)
+        val resolvedAttachmentPreviews = when {
+            attachmentPreviews.isNotEmpty() -> attachmentPreviews
+            attachmentDescriptors.isNotEmpty() -> attachmentDescriptors.map { descriptor ->
+                descriptorToPreviewAttachment(descriptor)
+            }
+            else -> emptyList()
         }
 
         val entity = PendingMessageOutboxEntity(
@@ -80,15 +91,24 @@ class OutboxRepository @Inject constructor(
             plainText = plainText,
             replyToMessageId = replyToMessageId,
             replyPreviewJson = encodeMessagePreviewJson(replyPreview),
+            localAttachmentUrisJson = encodeLocalAttachmentUris(localAttachmentUris),
             attachmentIdsCsv = attachmentIds.distinct().joinToString(","),
             attachmentDescriptorsJson = encodeAttachmentDescriptors(attachmentDescriptors),
             attachmentPreviewJson = encodeAttachmentsJson(
                 json = json,
-                attachments = attachmentPreviews,
+                attachments = resolvedAttachmentPreviews,
             ),
-            hasAttachments = attachmentIds.isNotEmpty() || attachmentDescriptors.isNotEmpty(),
+            hasAttachments = localAttachmentUris.isNotEmpty() ||
+                attachmentIds.isNotEmpty() ||
+                attachmentDescriptors.isNotEmpty() ||
+                resolvedAttachmentPreviews.isNotEmpty(),
             createdAt = createdAt,
             status = STATUS_QUEUED,
+            sendPhase = when {
+                localAttachmentUris.isNotEmpty() -> MessageSendPhase.UPLOADING.name
+                else -> MessageSendPhase.SENDING.name
+            },
+            sendProgress = if (localAttachmentUris.isNotEmpty()) 0 else null,
             errorMessage = null,
         )
 
@@ -117,11 +137,30 @@ class OutboxRepository @Inject constructor(
 
     suspend fun markSending(
         localMessageId: Int,
+        phase: MessageSendPhase,
+        progress: Int? = null,
     ) {
         dao.updateStatus(
             localMessageId = localMessageId,
             status = STATUS_SENDING,
+            sendPhase = phase.name,
+            sendProgress = progress?.coerceIn(0, 100),
             errorMessage = null,
+        )
+    }
+
+    suspend fun updateSendProgress(
+        localMessageId: Int,
+        phase: MessageSendPhase,
+        progress: Int?,
+    ) {
+        val current = dao.getByLocalMessageId(localMessageId) ?: return
+        dao.updateStatus(
+            localMessageId = localMessageId,
+            status = current.status,
+            sendPhase = phase.name,
+            sendProgress = progress?.coerceIn(0, 100),
+            errorMessage = current.errorMessage,
         )
     }
 
@@ -132,6 +171,8 @@ class OutboxRepository @Inject constructor(
         dao.updateStatus(
             localMessageId = localMessageId,
             status = STATUS_FAILED,
+            sendPhase = dao.getByLocalMessageId(localMessageId)?.sendPhase,
+            sendProgress = dao.getByLocalMessageId(localMessageId)?.sendProgress,
             errorMessage = errorMessage,
         )
     }
@@ -142,6 +183,8 @@ class OutboxRepository @Inject constructor(
         dao.updateStatus(
             localMessageId = localMessageId,
             status = STATUS_QUEUED,
+            sendPhase = dao.getByLocalMessageId(localMessageId)?.sendPhase,
+            sendProgress = dao.getByLocalMessageId(localMessageId)?.sendProgress,
             errorMessage = null,
         )
     }
@@ -150,6 +193,24 @@ class OutboxRepository @Inject constructor(
         conversationId: Int,
     ) {
         dao.requeueSendingForConversation(conversationId)
+    }
+
+    suspend fun updatePreparedAttachments(
+        localMessageId: Int,
+        attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
+    ) {
+        val attachmentIds = attachmentDescriptors.map { it.attachmentId }.distinct()
+        val previews = attachmentDescriptors.map(::descriptorToPreviewAttachment)
+        dao.updatePreparedAttachments(
+            localMessageId = localMessageId,
+            attachmentIdsCsv = attachmentIds.joinToString(","),
+            attachmentDescriptorsJson = encodeAttachmentDescriptors(attachmentDescriptors),
+            attachmentPreviewJson = encodeAttachmentsJson(
+                json = json,
+                attachments = previews,
+            ),
+            hasAttachments = attachmentIds.isNotEmpty(),
+        )
     }
 
     suspend fun requeueAllSendingMessages() {
@@ -248,12 +309,15 @@ class OutboxRepository @Inject constructor(
             plainText = plainText,
             replyToMessageId = replyToMessageId,
             replyPreview = decodeMessagePreviewJson(replyPreviewJson),
+            localAttachmentUris = decodeLocalAttachmentUris(localAttachmentUrisJson),
             attachmentIds = attachmentIdsCsv
                 .split(",")
                 .mapNotNull { it.trim().takeIf(String::isNotBlank)?.toIntOrNull() },
             attachmentDescriptors = decodeAttachmentDescriptors(attachmentDescriptorsJson),
             createdAt = createdAt,
             status = status.toMessageSendStatus(),
+            sendPhase = sendPhase?.toMessageSendPhase(),
+            sendProgress = sendProgress,
             errorMessage = errorMessage,
         )
     }
@@ -285,6 +349,8 @@ class OutboxRepository @Inject constructor(
             attachmentIds = attachmentIds,
             attachments = attachments,
             sendStatus = status.toMessageSendStatus(),
+            sendPhase = sendPhase?.toMessageSendPhase(),
+            sendProgress = sendProgress,
             errorMessage = errorMessage,
         )
     }
@@ -294,12 +360,39 @@ class OutboxRepository @Inject constructor(
         return -value
     }
 
+    private fun encodeLocalAttachmentUris(
+        uris: List<String>,
+    ): String {
+        return json.encodeToString(
+            ListSerializer(String.serializer()),
+            uris.distinct(),
+        )
+    }
+
+    private fun decodeLocalAttachmentUris(
+        raw: String,
+    ): List<String> {
+        return runCatching {
+            json.decodeFromString(
+                ListSerializer(String.serializer()),
+                raw,
+            )
+        }.getOrDefault(emptyList())
+    }
+
     private fun String.toMessageSendStatus(): MessageSendStatus {
         return when (this) {
             STATUS_FAILED -> MessageSendStatus.FAILED
             STATUS_SENDING,
             STATUS_QUEUED -> MessageSendStatus.SENDING
             else -> MessageSendStatus.SENDING
+        }
+    }
+
+    private fun String.toMessageSendPhase(): MessageSendPhase {
+        return when (this) {
+            MessageSendPhase.UPLOADING.name -> MessageSendPhase.UPLOADING
+            else -> MessageSendPhase.SENDING
         }
     }
 

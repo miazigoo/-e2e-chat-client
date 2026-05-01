@@ -65,20 +65,45 @@ interface PendingMessageOutboxDao {
     @Query(
         """
         UPDATE pending_message_outbox
-        SET status = :status, errorMessage = :errorMessage
+        SET status = :status,
+            sendPhase = :sendPhase,
+            sendProgress = :sendProgress,
+            errorMessage = :errorMessage
         WHERE localMessageId = :localMessageId
         """
     )
     suspend fun updateStatus(
         localMessageId: Int,
         status: String,
+        sendPhase: String?,
+        sendProgress: Int?,
         errorMessage: String?,
     )
 
     @Query(
         """
         UPDATE pending_message_outbox
-        SET status = 'queued', errorMessage = NULL
+        SET attachmentIdsCsv = :attachmentIdsCsv,
+            attachmentDescriptorsJson = :attachmentDescriptorsJson,
+            attachmentPreviewJson = :attachmentPreviewJson,
+            hasAttachments = :hasAttachments
+        WHERE localMessageId = :localMessageId
+        """
+    )
+    suspend fun updatePreparedAttachments(
+        localMessageId: Int,
+        attachmentIdsCsv: String,
+        attachmentDescriptorsJson: String,
+        attachmentPreviewJson: String,
+        hasAttachments: Boolean,
+    )
+
+    @Query(
+        """
+        UPDATE pending_message_outbox
+        SET status = 'queued',
+            sendProgress = NULL,
+            errorMessage = NULL
         WHERE conversationId = :conversationId
           AND status = 'sending'
         """
@@ -88,7 +113,9 @@ interface PendingMessageOutboxDao {
     @Query(
         """
         UPDATE pending_message_outbox
-        SET status = 'queued', errorMessage = NULL
+        SET status = 'queued',
+            sendProgress = NULL,
+            errorMessage = NULL
         WHERE status = 'sending'
         """
     )

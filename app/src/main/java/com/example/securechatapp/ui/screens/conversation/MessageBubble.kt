@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -54,6 +55,7 @@ import coil.compose.AsyncImage
 import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.MessagePreview
+import com.example.securechatapp.domain.model.MessageSendPhase
 import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.theme.SecureChatTheme
 import com.example.securechatapp.ui.viewmodel.InlineAttachmentPreviewUi
@@ -131,10 +133,10 @@ fun MessageBubble(
         msg.text
     }
     val imageAttachments = remember(msg.attachments) {
-        msg.attachments.filter { it.isImage }
+        msg.attachments.filter { it.isImage && it.canDownload }
     }
     val nonImageAttachments = remember(msg.attachments) {
-        msg.attachments.filter { !it.isImage }
+        msg.attachments.filter { !it.isImage || !it.canDownload }
     }
     val shouldShowAttachmentButton = msg.hasAttachments && msg.attachments.isEmpty()
     val shouldShowBodyText = bodyText.isNotBlank() && !(
@@ -268,6 +270,15 @@ fun MessageBubble(
                             text = msg.errorMessage,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    if (msg.sendStatus == MessageSendStatus.SENDING && msg.isMine) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        PendingSendStatusBlock(
+                            phase = msg.sendPhase,
+                            progress = msg.sendProgress,
+                            color = bubbleMetaColor,
                         )
                     }
 
@@ -425,6 +436,40 @@ fun MessageBubble(
                 onRemoveReaction()
             },
         )
+    }
+}
+
+@Composable
+private fun PendingSendStatusBlock(
+    phase: MessageSendPhase?,
+    progress: Int?,
+    color: Color,
+) {
+    val statusText = when (phase) {
+        MessageSendPhase.UPLOADING -> {
+            if (progress != null) "Загрузка $progress%" else "Загрузка"
+        }
+
+        MessageSendPhase.SENDING,
+        null -> "Отправка"
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+        )
+        if (phase == MessageSendPhase.UPLOADING && progress != null) {
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            )
+        }
     }
 }
 

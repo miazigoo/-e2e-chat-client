@@ -50,6 +50,7 @@ class ConversationRepository @Inject constructor(
                 deleteAfterReadSeconds = it.deleteAfterReadSeconds,
                 isActive = it.isActive,
                 isPurged = it.isPurged,
+                isPinned = it.isPinned,
                 updatedAt = it.lastMessage?.serverReceivedAt ?: it.updatedAt,
                 sharedSecretEnabled = it.sharedSecretEnabled,
                 sharedSecretFingerprint = it.sharedSecretFingerprint,
@@ -115,6 +116,7 @@ class ConversationRepository @Inject constructor(
             peerSharedSecretEnabled = data.peerSharedSecretEnabled,
             isActive = data.isActive,
             isPurged = data.isPurged,
+            isPinned = data.isPinned,
             pinnedMessage = data.pinnedMessage?.toDomain(
                 cachedPayload = data.pinnedMessage.messageId.let(cachedPayloads::get),
             ),
@@ -157,6 +159,25 @@ class ConversationRepository @Inject constructor(
     ): ConversationDetails {
         safe { api.unpinMessage(conversationId).data }
         return getConversation(conversationId)
+    }
+
+    suspend fun pinConversation(
+        conversationId: Int,
+        isPinned: Boolean,
+    ): List<ConversationListItem> {
+        if (isPinned) {
+            safe { api.pinConversation(conversationId).data }
+        } else {
+            safe { api.unpinConversation(conversationId).data }
+        }
+        return listConversations()
+    }
+
+    suspend fun deleteConversation(
+        conversationId: Int,
+    ): List<ConversationListItem> {
+        safe { api.deleteConversation(conversationId).data }
+        return listConversations()
     }
 
     private fun buildConversationTitle(

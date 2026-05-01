@@ -1,9 +1,11 @@
 package com.example.securechatapp.ui.screens.conversation
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,100 +58,107 @@ fun ConversationTopBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .statusBarsPadding(),
         color = extraColors.topBar,
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 12.dp,
+        tonalElevation = 2.dp,
+        shadowElevation = 4.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircleActionButton(
-                label = "←",
-                onClick = onBack,
-            )
-
-            Surface(
+        Column {
+            Row(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(start = 14.dp, top = 10.dp),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                CircleActionButton(
+                    label = "←",
+                    onClick = onBack,
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+
                 Surface(
-                    color = lockColor,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
-                    ),
-                    modifier = Modifier.padding(top = 5.dp),
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .size(42.dp)
+                        .clip(CircleShape),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Surface(
+                        color = lockColor,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+                        ),
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) {
+                        Text(
+                            text = "$lockEmoji $lockLabel",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+
+                CircleActionButton(
+                    label = lockEmoji,
+                    onClick = onSharedSecretClick,
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(enabled = !isLoggingOut, onClick = onLogout),
                 ) {
                     Text(
-                        text = "$lockEmoji $lockLabel",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = if (isLoggingOut) "..." else "Выйти",
+                        style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                     )
                 }
             }
 
-            CircleActionButton(
-                label = lockEmoji,
-                onClick = onSharedSecretClick,
-            )
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(enabled = !isLoggingOut, onClick = onLogout),
-            ) {
-                Text(
-                    text = if (isLoggingOut) "..." else "Выйти",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-                )
-            }
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+            )
         }
     }
 }
@@ -165,7 +174,7 @@ private fun CircleActionButton(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),

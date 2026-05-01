@@ -13,6 +13,7 @@ interface ConversationCacheDao {
         """
         SELECT * FROM conversations_cache
         ORDER BY 
+            isPinned DESC,
             CASE WHEN updatedAt IS NULL THEN 1 ELSE 0 END,
             updatedAt DESC,
             conversationId DESC
@@ -24,6 +25,7 @@ interface ConversationCacheDao {
         """
         SELECT * FROM conversations_cache
         ORDER BY 
+            isPinned DESC,
             CASE WHEN updatedAt IS NULL THEN 1 ELSE 0 END,
             updatedAt DESC,
             conversationId DESC

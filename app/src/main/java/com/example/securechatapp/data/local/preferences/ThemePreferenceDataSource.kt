@@ -18,7 +18,7 @@ class ThemePreferenceDataSource(
     }
 
     val darkThemeEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[Keys.darkThemeEnabled] ?: false
+        prefs[Keys.darkThemeEnabled] ?: true
     }
 
     val colorSchemeFlow: Flow<ThemePalette> = dataStore.data.map { prefs ->

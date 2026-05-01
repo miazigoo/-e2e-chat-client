@@ -23,6 +23,7 @@ data class ConversationListItem(
     val deleteAfterReadSeconds: Int? = null,
     val isActive: Boolean = true,
     val isPurged: Boolean = false,
+    val isPinned: Boolean = false,
     val updatedAt: String? = null,
     val sharedSecretEnabled: Boolean = false,
     val sharedSecretFingerprint: String? = null,
@@ -45,6 +46,7 @@ data class ConversationDetails(
     val peerSharedSecretEnabled: Boolean = false,
     val isActive: Boolean = true,
     val isPurged: Boolean = false,
+    val isPinned: Boolean = false,
     val pinnedMessage: MessagePreview? = null,
 )
 
@@ -53,6 +55,12 @@ enum class MessageSendStatus {
     SENT,
     SENDING,
     FAILED,
+}
+
+@Serializable
+enum class MessageSendPhase {
+    UPLOADING,
+    SENDING,
 }
 
 @Serializable
@@ -78,6 +86,8 @@ data class ChatMessage(
     val attachmentIds: List<Int> = emptyList(),
     val attachments: List<AttachmentItem> = emptyList(),
     val sendStatus: MessageSendStatus = MessageSendStatus.SENT,
+    val sendPhase: MessageSendPhase? = null,
+    val sendProgress: Int? = null,
     val errorMessage: String? = null,
     val reactions: List<MessageReactionSummary> = emptyList(),
     val replyToMessageId: Int? = null,

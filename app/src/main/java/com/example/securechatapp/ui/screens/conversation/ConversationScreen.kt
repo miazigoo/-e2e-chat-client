@@ -70,6 +70,7 @@ private data class PendingAttachmentUi(
     val uri: Uri,
     val displayName: String,
     val mimeType: String?,
+    val fileSize: Long,
 ) {
     val isImage: Boolean
         get() = mimeType?.startsWith("image/") == true
@@ -109,6 +110,7 @@ fun ConversationScreen(
                         ?: selectedUri.lastPathSegment
                         ?: "Файл",
                     mimeType = resolveAttachmentMimeType(context, selectedUri),
+                    fileSize = resolveAttachmentSize(context, selectedUri) ?: 0L,
                 )
             }
             pendingAttachments = (pendingAttachments + newItems).distinctBy { it.uri.toString() }
@@ -389,20 +391,30 @@ fun ConversationScreen(
                 },
                 onSendClick = {
                     val textToSend = message
+                    val attachmentDrafts = pendingAttachments.mapIndexed { index, item ->
+                        com.example.securechatapp.domain.model.AttachmentItem(
+                            attachmentId = -(index + 1),
+                            fileName = item.displayName,
+                            mimeType = item.mimeType,
+                            fileSize = item.fileSize,
+                            canDownload = false,
+                        )
+                    }
                     val attachmentsToSend = pendingAttachments.map { it.uri }
 
                     viewModel.sendMessage(
                         text = textToSend,
+                        attachmentDrafts = attachmentDrafts,
                         attachmentUris = attachmentsToSend,
                     ) {
                         message = ""
                         pendingAttachments = emptyList()
                     }
                 },
-                isUploading = state.isUploadingAttachment,
+                isUploading = state.isUploadingAttachment || state.isSubmittingMessage,
                 inputEnabled = conversationBlockedReason == null,
                 placeholder = composerPlaceholder,
-                sendEnabled = message.isNotBlank() || pendingAttachments.isNotEmpty(),
+                sendEnabled = (message.isNotBlank() || pendingAttachments.isNotEmpty()) && !state.isSubmittingMessage,
             )
         }
 
@@ -724,6 +736,26 @@ private fun resolveAttachmentMimeType(
     context: Context,
     uri: Uri,
 ): String? = context.contentResolver.getType(uri)
+
+private fun resolveAttachmentSize(
+    context: Context,
+    uri: Uri,
+): Long? {
+    return context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.SIZE),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        val columnIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (columnIndex >= 0 && cursor.moveToFirst() && !cursor.isNull(columnIndex)) {
+            cursor.getLong(columnIndex)
+        } else {
+            null
+        }
+    }
+}
 
 private fun messagePreviewText(preview: MessagePreview): String {
     return preview.text.ifBlank {

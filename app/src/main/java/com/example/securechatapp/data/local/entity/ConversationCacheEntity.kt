@@ -20,6 +20,7 @@ data class ConversationCacheEntity(
     val deleteAfterReadSeconds: Int? = null,
     val isActive: Boolean = true,
     val isPurged: Boolean = false,
+    val isPinned: Boolean = false,
     val lastEventId: Int? = null,
     val sharedSecretEnabled: Boolean = false,
     val sharedSecretFingerprint: String? = null,

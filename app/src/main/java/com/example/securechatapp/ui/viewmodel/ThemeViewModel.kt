@@ -19,7 +19,7 @@ class ThemeViewModel @Inject constructor(
         themePreferenceDataSource.darkThemeEnabledFlow.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = false,
+            initialValue = true,
         )
 
     val colorScheme: StateFlow<ThemePalette> =

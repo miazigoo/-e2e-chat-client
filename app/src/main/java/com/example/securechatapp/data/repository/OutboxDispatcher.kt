@@ -1,8 +1,12 @@
 package com.example.securechatapp.data.repository
 
+import android.net.Uri
 import com.example.securechatapp.core.common.ConversationsRefreshBus
+import com.example.securechatapp.data.files.AttachmentUploadManager
+import com.example.securechatapp.domain.model.MessageSendPhase
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -10,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 class OutboxDispatcher @Inject constructor(
     private val outboxRepository: OutboxRepository,
     private val messageRepository: MessageRepository,
+    private val attachmentUploadManager: AttachmentUploadManager,
     private val conversationsRefreshBus: ConversationsRefreshBus,
 ) {
     private val mutex = Mutex()
@@ -47,15 +52,56 @@ class OutboxDispatcher @Inject constructor(
         pending: PendingOutgoingMessage,
     ) {
         try {
-            outboxRepository.markSending(pending.localMessageId)
+            outboxRepository.markSending(
+                localMessageId = pending.localMessageId,
+                phase = pending.sendPhase ?: MessageSendPhase.SENDING,
+                progress = pending.sendProgress,
+            )
 
+            val preparedDescriptors = if (
+                pending.attachmentDescriptors.isEmpty() &&
+                pending.localAttachmentUris.isNotEmpty()
+            ) {
+                var lastReportedProgress = -1
+                outboxRepository.updateSendProgress(
+                    localMessageId = pending.localMessageId,
+                    phase = MessageSendPhase.UPLOADING,
+                    progress = 0,
+                )
+                val uploaded = attachmentUploadManager.uploadEncryptedAttachments(
+                    conversationId = pending.conversationId,
+                    uris = pending.localAttachmentUris.map(Uri::parse),
+                    onProgress = { percent ->
+                        if (percent != lastReportedProgress) {
+                            lastReportedProgress = percent
+                            runBlocking {
+                                outboxRepository.updateSendProgress(
+                                    localMessageId = pending.localMessageId,
+                                    phase = MessageSendPhase.UPLOADING,
+                                    progress = percent,
+                                )
+                            }
+                        }
+                    },
+                )
+                uploaded.map { it.descriptor }
+                    .also { outboxRepository.updatePreparedAttachments(pending.localMessageId, it) }
+            } else {
+                pending.attachmentDescriptors
+            }
+
+            outboxRepository.updateSendProgress(
+                localMessageId = pending.localMessageId,
+                phase = MessageSendPhase.SENDING,
+                progress = null,
+            )
             messageRepository.sendMessage(
                 conversationId = pending.conversationId,
                 recipientUserId = pending.recipientUserId,
                 plainText = pending.plainText,
                 replyToMessageId = pending.replyToMessageId,
-                attachmentIds = pending.attachmentIds,
-                attachmentDescriptors = pending.attachmentDescriptors,
+                attachmentIds = preparedDescriptors.map { it.attachmentId },
+                attachmentDescriptors = preparedDescriptors,
                 messageUuid = pending.clientMessageUuid,
             )
 

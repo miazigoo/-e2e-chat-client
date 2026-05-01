@@ -144,6 +144,62 @@ class ChatsViewModel @Inject constructor(
         }
     }
 
+    fun toggleConversationPin(
+        conversationId: Int,
+        isPinned: Boolean,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                _state.value = _state.value.copy(
+                    isLoading = true,
+                    error = null,
+                    info = null,
+                )
+
+                val items = conversationRepository.pinConversation(
+                    conversationId = conversationId,
+                    isPinned = !isPinned,
+                )
+                chatCacheRepository.replaceConversations(items)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    info = if (isPinned) "Чат откреплён" else "Чат закреплён",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = it.message,
+                )
+            }
+        }
+    }
+
+    fun deleteConversation(
+        conversationId: Int,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                _state.value = _state.value.copy(
+                    isLoading = true,
+                    error = null,
+                    info = null,
+                )
+
+                val items = conversationRepository.deleteConversation(conversationId)
+                chatCacheRepository.replaceConversations(items)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    info = "Чат удалён",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = it.message,
+                )
+            }
+        }
+    }
+
     fun syncFcmToken(token: String?) {
         viewModelScope.launch {
             sessionRepository.updateFcmToken(token)

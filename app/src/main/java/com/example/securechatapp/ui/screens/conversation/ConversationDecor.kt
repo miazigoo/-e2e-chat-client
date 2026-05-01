@@ -35,9 +35,9 @@ fun TelegramChatWallpaper() {
     val dark = isSystemInDarkTheme()
     val extraColors = SecureChatTheme.extras
     val base = extraColors.wallpaper
-    val accent1 = MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.10f else 0.07f)
-    val accent2 = MaterialTheme.colorScheme.secondary.copy(alpha = if (dark) 0.07f else 0.05f)
-    val accent3 = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (dark) 0.10f else 0.06f)
+    val accent1 = MaterialTheme.colorScheme.primary.copy(alpha = if (dark) 0.08f else 0.05f)
+    val accent2 = MaterialTheme.colorScheme.secondary.copy(alpha = if (dark) 0.05f else 0.035f)
+    val accent3 = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (dark) 0.12f else 0.07f)
 
     Box(
         modifier = Modifier
@@ -47,34 +47,42 @@ fun TelegramChatWallpaper() {
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = (-70).dp, y = (-40).dp)
-                .size(220.dp)
+                .offset(x = (-56).dp, y = (-24).dp)
+                .size(190.dp)
                 .clip(CircleShape)
                 .background(accent1)
         )
         Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 80.dp, y = (-40).dp)
-                .size(250.dp)
-                .clip(CircleShape)
+                .align(Alignment.TopEnd)
+                .offset(x = 72.dp, y = 42.dp)
+                .size(width = 210.dp, height = 84.dp)
+                .clip(RoundedCornerShape(999.dp))
                 .background(accent2)
         )
         Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = (-30).dp, y = 60.dp)
-                .size(180.dp)
-                .clip(CircleShape)
+                .align(Alignment.CenterStart)
+                .offset(x = (-34).dp, y = 12.dp)
+                .size(width = 148.dp, height = 54.dp)
+                .clip(RoundedCornerShape(999.dp))
                 .background(accent3)
         )
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .offset(x = 50.dp, y = 40.dp)
-                .size(160.dp)
+                .offset(x = 34.dp, y = 18.dp)
+                .size(150.dp)
                 .clip(CircleShape)
                 .background(accent1)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(x = 18.dp, y = (-44).dp)
+                .size(width = 180.dp, height = 68.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(accent2)
         )
     }
 }

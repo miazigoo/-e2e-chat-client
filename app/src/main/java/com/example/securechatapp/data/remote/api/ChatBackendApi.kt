@@ -10,6 +10,7 @@ import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
 import com.example.securechatapp.data.remote.dto.CreateConversationResponseDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionResponseDto
+import com.example.securechatapp.data.remote.dto.DeleteConversationResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessageReactionResponseDto
@@ -27,6 +28,7 @@ import com.example.securechatapp.data.remote.dto.MarkDeliveredRequestDto
 import com.example.securechatapp.data.remote.dto.MarkDeliveredResponseDto
 import com.example.securechatapp.data.remote.dto.MarkReadRequestDto
 import com.example.securechatapp.data.remote.dto.MarkReadResponseDto
+import com.example.securechatapp.data.remote.dto.PinConversationResponseDto
 import com.example.securechatapp.data.remote.dto.PinMessageResponseDto
 import com.example.securechatapp.data.remote.dto.RefreshRequestDto
 import com.example.securechatapp.data.remote.dto.RefreshResponseDto
@@ -140,6 +142,21 @@ interface ChatBackendApi {
     suspend fun getConversation(
         @Path("conversationId") conversationId: Int,
     ): ApiEnvelopeDto<GetConversationResponseDto>
+
+    @POST("conversations/{conversationId}/pin")
+    suspend fun pinConversation(
+        @Path("conversationId") conversationId: Int,
+    ): ApiEnvelopeDto<PinConversationResponseDto>
+
+    @DELETE("conversations/{conversationId}/pin")
+    suspend fun unpinConversation(
+        @Path("conversationId") conversationId: Int,
+    ): ApiEnvelopeDto<PinConversationResponseDto>
+
+    @DELETE("conversations/{conversationId}")
+    suspend fun deleteConversation(
+        @Path("conversationId") conversationId: Int,
+    ): ApiEnvelopeDto<DeleteConversationResponseDto>
 
     @PATCH("conversations/{conversationId}/settings")
     suspend fun updateConversationSettings(

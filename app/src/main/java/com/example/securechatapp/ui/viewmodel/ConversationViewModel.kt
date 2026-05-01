@@ -52,6 +52,7 @@ data class ConversationUiState(
     val isLoading: Boolean = false,
     val isLoggingOut: Boolean = false,
     val isUploadingAttachment: Boolean = false,
+    val isSubmittingMessage: Boolean = false,
     val isLoadingOlderMessages: Boolean = false,
     val isLoadingNewerMessages: Boolean = false,
     val deletingMessageIds: Set<Int> = emptySet(),
@@ -221,58 +222,46 @@ fun disableSharedSecret() {
 
     fun sendMessage(
         text: String,
+        attachmentDrafts: List<AttachmentItem> = emptyList(),
         attachmentUris: List<Uri> = emptyList(),
-        onSent: () -> Unit = {},
+        onQueued: () -> Unit = {},
     ) {
         val currentConversationId = _state.value.conversationId ?: return
         val peerUserId = _state.value.peerUserId ?: return
         val replyingTo = _state.value.replyingTo
+        if (_state.value.isSubmittingMessage) return
         if (text.isBlank() && attachmentUris.isEmpty()) return
 
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 error = null,
                 info = null,
-                isUploadingAttachment = attachmentUris.isNotEmpty(),
+                isSubmittingMessage = true,
             )
 
             try {
-                val uploadedEncryptedAttachments = if (attachmentUris.isNotEmpty()) {
-                    attachmentUploadManager.uploadEncryptedAttachments(
-                        conversationId = currentConversationId,
-                        uris = attachmentUris,
-                    )
-                } else {
-                    emptyList()
-                }
-
-                outboxRepository.enqueuePendingMessage(
+                val localMessageId = outboxRepository.enqueuePendingMessage(
                     conversationId = currentConversationId,
                     recipientUserId = peerUserId,
                     plainText = text,
                     replyToMessageId = replyingTo?.messageId,
                     replyPreview = replyingTo,
-                    attachmentIds = uploadedEncryptedAttachments.map { it.attachmentId },
-                    attachmentDescriptors = uploadedEncryptedAttachments.map { it.descriptor },
+                    localAttachmentUris = attachmentUris.map(Uri::toString),
+                    attachmentPreviews = attachmentDrafts,
+                    attachmentIds = emptyList(),
+                    attachmentDescriptors = emptyList(),
                 )
 
                 _state.value = _state.value.copy(
-                    isUploadingAttachment = false,
+                    isSubmittingMessage = false,
                     replyingTo = null,
                 )
+                onQueued()
 
-                outboxDispatcher.drainConversation(currentConversationId)
-                runCatching {
-                    reloadMessages(
-                        markDelivered = false,
-                        markRead = false,
-                    )
-                }
-
-                onSent()
+                outboxDispatcher.drainMessage(localMessageId)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
-                    isUploadingAttachment = false,
+                    isSubmittingMessage = false,
                     error = e.message ?: "Не удалось подготовить сообщение",
                 )
             }
@@ -389,12 +378,6 @@ fun disableSharedSecret() {
         viewModelScope.launch {
             outboxRepository.requeueFailedMessage(messageId)
             outboxDispatcher.drainMessage(messageId)
-            runCatching {
-                reloadMessages(
-                    markDelivered = false,
-                    markRead = false,
-                )
-            }
         }
     }
 

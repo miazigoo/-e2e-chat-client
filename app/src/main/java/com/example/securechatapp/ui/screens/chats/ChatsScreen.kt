@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +73,7 @@ fun ChatsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var search by remember { mutableStateOf("") }
+    var deleteConversationCandidate by remember { mutableStateOf<ConversationListItem?>(null) }
     val normalizedSearch = remember(search) { search.trim() }
 
     Surface(
@@ -203,7 +208,16 @@ fun ChatsScreen(
                     items(state.conversations, key = { it.conversationId }) { item ->
                         ChatListItem(
                             item = item,
-                            onClick = { onConversationClick(item.conversationId) }
+                            onClick = { onConversationClick(item.conversationId) },
+                            onTogglePinned = {
+                                viewModel.toggleConversationPin(
+                                    conversationId = item.conversationId,
+                                    isPinned = item.isPinned,
+                                )
+                            },
+                            onDeleteRequest = {
+                                deleteConversationCandidate = item
+                            },
                         )
                         HorizontalDivider(
                             thickness = 0.5.dp,
@@ -213,6 +227,35 @@ fun ChatsScreen(
                 }
             }
         }
+    }
+
+    deleteConversationCandidate?.let { item ->
+        AlertDialog(
+            onDismissRequest = { deleteConversationCandidate = null },
+            title = { Text("Удалить чат") },
+            text = {
+                Text(
+                    "Чат «${item.title}» будет удалён целиком вместе с сообщениями и вложениями."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteConversationCandidate = null
+                        viewModel.deleteConversation(item.conversationId)
+                    },
+                ) {
+                    Text("Удалить")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { deleteConversationCandidate = null },
+                ) {
+                    Text("Отмена")
+                }
+            },
+        )
     }
 }
 
@@ -406,10 +449,13 @@ private fun SearchUserItem(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatListItem(
     item: ConversationListItem,
     onClick: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onDeleteRequest: () -> Unit,
 ) {
     val statusLabel = when {
         item.isPurged -> "Удалён"
@@ -418,6 +464,7 @@ private fun ChatListItem(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.988f else 1f,
         animationSpec = spring(stiffness = 700f, dampingRatio = 0.75f),
@@ -432,98 +479,127 @@ private fun ChatListItem(
                 scaleY = scale
             }
             .animateContentSize()
-            .clickable(
+            .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
+                onLongClick = { menuExpanded = true },
             ),
         color = MaterialTheme.colorScheme.surface,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AvatarCircle(label = item.title)
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = if (item.isSavedMessages) "🔖 ${item.title}" else item.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                AvatarCircle(label = item.title)
 
-                statusLabel?.let { label ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(
-                                if (item.isPurged) {
-                                    MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = buildString {
+                            if (item.isSavedMessages) append("🔖 ")
+                            if (item.isPinned) append("📌 ")
+                            append(item.title)
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
+                    statusLabel?.let { label ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (item.isPurged) {
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                                    } else {
+                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                                    }
+                                )
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (item.isPurged) {
+                                    MaterialTheme.colorScheme.error
                                 } else {
-                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
-                                }
+                                    MaterialTheme.colorScheme.secondary
+                                },
                             )
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (item.isPurged) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.secondary
-                            },
-                        )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = if (item.pinnedMessage != null) "📌 ${item.lastMessagePreview}" else item.lastMessagePreview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Text(
-                    text = if (item.pinnedMessage != null) "📌 ${item.lastMessagePreview}" else item.lastMessagePreview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = formatChatListTime(item.updatedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (item.unreadCount > 0) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = item.unreadCount.toString(),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center,
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
             ) {
-                Text(
-                    text = formatChatListTime(item.updatedAt),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                DropdownMenuItem(
+                    text = { Text(if (item.isPinned) "Открепить чат" else "Закрепить чат") },
+                    onClick = {
+                        menuExpanded = false
+                        onTogglePinned()
+                    },
                 )
-
-                if (item.unreadCount > 0) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = item.unreadCount.toString(),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
+                if (!item.isSavedMessages) {
+                    DropdownMenuItem(
+                        text = { Text("Удалить чат") },
+                        onClick = {
+                            menuExpanded = false
+                            onDeleteRequest()
+                        },
+                    )
                 }
             }
         }
