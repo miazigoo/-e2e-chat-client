@@ -40,3 +40,15 @@
 
 -dontwarn retrofit2.Platform
 -dontwarn kotlin.Unit
+
+# Keep app Retrofit interfaces intact. The auth/bootstrap suspend endpoint was
+# still losing enough type information under obfuscation to break converter
+# resolution in release.
+-keep interface com.example.securechatapp.data.remote.api.** { *; }
+
+# Keep serializable network DTOs and generated serializers stable in release.
+-keep class com.example.securechatapp.core.network.** { *; }
+-keep class com.example.securechatapp.data.remote.dto.** { *; }
+-keep class com.example.securechatapp.data.remote.dto.auth.** { *; }
+-keep class com.example.securechatapp.data.remote.dto.keys.** { *; }
+-keep class kotlinx.serialization.** { *; }
