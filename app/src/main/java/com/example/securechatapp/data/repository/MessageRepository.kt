@@ -48,6 +48,7 @@ class MessageRepository @Inject constructor(
     private val signalPreKeyRepository: SignalPreKeyRepository,
     private val signalMessageCryptoEngine: SignalMessageCryptoEngine,
     private val signalStore: PersistentSignalProtocolStore,
+    private val decryptedMessagePayloadCacheRepository: DecryptedMessagePayloadCacheRepository,
     json: Json,
 ) : BaseApiRepository(json) {
 
@@ -98,6 +99,7 @@ class MessageRepository @Inject constructor(
                 limit = limit,
             ).data
         }
+        val decodeContext = buildDecodeContext(response.items)
 
         return MessageWindowPage(
             messages = response.items
@@ -107,8 +109,15 @@ class MessageRepository @Inject constructor(
                         conversationUuid = conversationUuid,
                         peerUserId = peerUserId,
                         forceMine = forceMine,
-                        decoder = ::decodeEncryptedMessagePayload,
+                        decoder = { envelope ->
+                            decodeEncryptedMessagePayload(
+                                envelope = envelope,
+                                decodeContext = decodeContext,
+                            )
+                        },
                     )
+                }.also {
+                    persistDecodedPayloads(decodeContext)
                 },
             anchorMessageId = response.anchorMessageId,
             beforeId = response.beforeId,
@@ -131,13 +140,23 @@ class MessageRepository @Inject constructor(
                 conversationId = conversationId,
                 query = query.trim(),
             ).data
-        }.items.map { dto ->
-            dto.toDomainMessage(
-                conversationUuid = conversationUuid,
-                peerUserId = peerUserId,
-                forceMine = forceMine,
-                decoder = ::decodeEncryptedMessagePayload,
-            )
+        }.let { response ->
+            val decodeContext = buildDecodeContext(response.items)
+            response.items.map { dto ->
+                dto.toDomainMessage(
+                    conversationUuid = conversationUuid,
+                    peerUserId = peerUserId,
+                    forceMine = forceMine,
+                    decoder = { envelope ->
+                        decodeEncryptedMessagePayload(
+                            envelope = envelope,
+                            decodeContext = decodeContext,
+                        )
+                    },
+                )
+            }.also {
+                persistDecodedPayloads(decodeContext)
+            }
         }
     }
 
@@ -155,6 +174,7 @@ class MessageRepository @Inject constructor(
                 tab = tab,
             ).data
         }
+        val decodeContext = buildDecodeContext(data.items)
         return SharedMessagesPage(
             conversationId = data.conversationId,
             tab = data.tab,
@@ -168,8 +188,15 @@ class MessageRepository @Inject constructor(
                     conversationUuid = conversationUuid,
                     peerUserId = peerUserId,
                     forceMine = forceMine,
-                    decoder = ::decodeEncryptedMessagePayload,
+                    decoder = { envelope ->
+                        decodeEncryptedMessagePayload(
+                            envelope = envelope,
+                            decodeContext = decodeContext,
+                        )
+                    },
                 )
+            }.also {
+                persistDecodedPayloads(decodeContext)
             },
         )
     }
@@ -394,12 +421,18 @@ class MessageRepository @Inject constructor(
 
     internal data class MessageCipherEnvelope(
         val messageId: Int? = null,
+        val messageUuid: String? = null,
         val conversationUuid: String,
         val senderUserId: Int,
         val senderDeviceId: Int? = null,
         val ciphertext: String,
         val ciphertextVersion: Int? = null,
         val encryptionMode: String,
+    )
+
+    private data class DecodeContext(
+        val cachedPayloadsByMessageId: Map<Int, DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload>,
+        val refreshedPayloadsByMessageId: MutableMap<Int, DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload> = linkedMapOf(),
     )
 
     private fun buildEncryptedMessagePayload(
@@ -454,17 +487,22 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    private fun decodeEncryptedMessagePayload(
+    private suspend fun decodeEncryptedMessagePayload(
         envelope: MessageCipherEnvelope,
+        decodeContext: DecodeContext,
     ): DecodedMessagePayload {
+        val cachedPayload = envelope.messageId
+            ?.let(decodeContext.cachedPayloadsByMessageId::get)
         val decrypted = try {
             decryptTransportPayload(envelope)
         } catch (e: ConversationSharedSecretMissingException) {
+            cachedPayload?.let { return it.toDecodedPayload() }
             return DecodedMessagePayload(
                 text = "🔐 ${e.message}",
                 attachments = emptyList(),
             )
         } catch (e: Exception) {
+            cachedPayload?.let { return it.toDecodedPayload() }
             Log.w(
                 logTag,
                 "Failed to decrypt message payload for messageId=${envelope.messageId}, " +
@@ -485,25 +523,32 @@ class MessageRepository @Inject constructor(
             )
         }.getOrNull()
 
-        if (payload == null || payload.schema != SecureMessagePayloadV1.SCHEMA) {
-            return DecodedMessagePayload(
+        val decodedPayload = if (payload == null || payload.schema != SecureMessagePayloadV1.SCHEMA) {
+            DecodedMessagePayload(
                 text = decrypted,
                 attachments = emptyList(),
             )
+        } else {
+            val attachments = payload.attachments
+                .map { descriptor -> descriptorToAttachmentUi(descriptor) }
+                .distinctBy { it.attachmentId }
+
+            val text = payload.text
+                ?.takeIf { it.isNotBlank() }
+                ?: if (attachments.isNotEmpty()) "[attachment]" else ""
+
+            DecodedMessagePayload(
+                text = text,
+                attachments = attachments,
+            )
         }
 
-        val attachments = payload.attachments
-            .map { descriptor -> descriptorToAttachmentUi(descriptor) }
-            .distinctBy { it.attachmentId }
-
-        val text = payload.text
-            ?.takeIf { it.isNotBlank() }
-            ?: if (attachments.isNotEmpty()) "[attachment]" else ""
-
-        return DecodedMessagePayload(
-            text = text,
-            attachments = attachments,
+        cacheDecodedPayload(
+            envelope = envelope,
+            payload = decodedPayload,
+            decodeContext = decodeContext,
         )
+        return decodedPayload
     }
 
     private fun decryptTransportPayload(
@@ -592,6 +637,55 @@ class MessageRepository @Inject constructor(
             .sorted()
     }
 
+    private suspend fun buildDecodeContext(
+        items: List<com.example.securechatapp.data.remote.dto.MessageItemDto>,
+    ): DecodeContext {
+        val messageIds = buildSet {
+            items.forEach { item ->
+                if (item.messageId > 0) {
+                    add(item.messageId)
+                }
+                item.replyPreview?.messageId?.takeIf { it > 0 }?.let(::add)
+                item.forwardPreview?.messageId?.takeIf { it > 0 }?.let(::add)
+            }
+        }
+        return DecodeContext(
+            cachedPayloadsByMessageId = decryptedMessagePayloadCacheRepository.getByMessageIds(messageIds),
+        )
+    }
+
+    private suspend fun persistDecodedPayloads(
+        decodeContext: DecodeContext,
+    ) {
+        decryptedMessagePayloadCacheRepository.upsertAll(
+            decodeContext.refreshedPayloadsByMessageId.values,
+        )
+    }
+
+    private fun cacheDecodedPayload(
+        envelope: MessageCipherEnvelope,
+        payload: DecodedMessagePayload,
+        decodeContext: DecodeContext,
+    ) {
+        val messageId = envelope.messageId?.takeIf { it > 0 } ?: return
+        decodeContext.refreshedPayloadsByMessageId[messageId] =
+            DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload(
+                messageId = messageId,
+                messageUuid = envelope.messageUuid,
+                text = payload.text,
+                attachments = payload.attachments,
+                updatedAt = crypto.nowIso(),
+            )
+    }
+
+    private fun DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload.toDecodedPayload():
+            DecodedMessagePayload {
+        return DecodedMessagePayload(
+            text = text,
+            attachments = attachments,
+        )
+    }
+
     private fun descriptorToAttachmentUi(
         descriptor: EncryptedAttachmentDescriptor,
     ): AttachmentItem {
@@ -656,15 +750,16 @@ class MessageRepository @Inject constructor(
     }
 }
 
-private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMessage(
+private suspend fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMessage(
     conversationUuid: String,
     peerUserId: Int,
     forceMine: Boolean,
-    decoder: (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
+    decoder: suspend (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
 ): ChatMessage {
     val decoded = decoder(
         MessageRepository.MessageCipherEnvelope(
             messageId = messageId,
+            messageUuid = messageUuid,
             conversationUuid = conversationUuid,
             senderUserId = senderUserId,
             senderDeviceId = senderDeviceId,
@@ -703,13 +798,14 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
     )
 }
 
-private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomainPreview(
+private suspend fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomainPreview(
     conversationUuid: String,
-    decoder: (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
+    decoder: suspend (MessageRepository.MessageCipherEnvelope) -> MessageRepository.DecodedMessagePayload,
 ): MessagePreview {
     val decoded = decoder(
         MessageRepository.MessageCipherEnvelope(
             messageId = messageId,
+            messageUuid = messageUuid,
             conversationUuid = conversationUuid,
             senderUserId = senderUserId,
             senderDeviceId = senderDeviceId,
