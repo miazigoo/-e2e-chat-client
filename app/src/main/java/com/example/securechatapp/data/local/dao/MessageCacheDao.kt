@@ -18,6 +18,15 @@ interface MessageCacheDao {
     )
     fun observeForConversation(conversationId: Int): Flow<List<MessageCacheEntity>>
 
+    @Query(
+        """
+        SELECT * FROM messages_cache
+        WHERE conversationId = :conversationId
+        ORDER BY messageId ASC
+        """
+    )
+    suspend fun listForConversation(conversationId: Int): List<MessageCacheEntity>
+
     @Upsert
     suspend fun upsertAll(items: List<MessageCacheEntity>)
 

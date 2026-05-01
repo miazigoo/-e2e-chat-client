@@ -393,6 +393,7 @@ class MessageRepository @Inject constructor(
     )
 
     internal data class MessageCipherEnvelope(
+        val messageId: Int? = null,
         val conversationUuid: String,
         val senderUserId: Int,
         val senderDeviceId: Int? = null,
@@ -466,7 +467,9 @@ class MessageRepository @Inject constructor(
         } catch (e: Exception) {
             Log.w(
                 logTag,
-                "Failed to decrypt message payload, showing placeholder instead",
+                "Failed to decrypt message payload for messageId=${envelope.messageId}, " +
+                        "senderUserId=${envelope.senderUserId}, senderDeviceId=${envelope.senderDeviceId}, " +
+                        "ciphertextVersion=${envelope.ciphertextVersion}, encryptionMode=${envelope.encryptionMode}; showing placeholder instead",
                 e,
             )
             return DecodedMessagePayload(
@@ -562,7 +565,14 @@ class MessageRepository @Inject constructor(
                     )
                 }
             }.onSuccess { return it }
-                .onFailure { lastError = it }
+                .onFailure {
+                Log.w(
+                    logTag,
+                    "Signal decrypt failed for messageId=${envelope.messageId} with senderDeviceId=$deviceId",
+                    it,
+                )
+                lastError = it
+            }
         }
 
         throw lastError ?: IllegalStateException("Signal message decryption failed")
@@ -654,6 +664,7 @@ private fun com.example.securechatapp.data.remote.dto.MessageItemDto.toDomainMes
 ): ChatMessage {
     val decoded = decoder(
         MessageRepository.MessageCipherEnvelope(
+            messageId = messageId,
             conversationUuid = conversationUuid,
             senderUserId = senderUserId,
             senderDeviceId = senderDeviceId,
@@ -698,6 +709,7 @@ private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain
 ): MessagePreview {
     val decoded = decoder(
         MessageRepository.MessageCipherEnvelope(
+            messageId = messageId,
             conversationUuid = conversationUuid,
             senderUserId = senderUserId,
             senderDeviceId = senderDeviceId,

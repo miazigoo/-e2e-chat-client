@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import com.example.securechatapp.MainActivity
 import com.example.securechatapp.R
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
+import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.ui.navigation.Routes
@@ -32,6 +33,7 @@ class PushNotificationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
+    private val chatCacheRepository: ChatCacheRepository,
     private val notificationPreferenceDataSource: NotificationPreferenceDataSource,
     private val visibleConversationTracker: VisibleConversationTracker,
 ) {
@@ -70,11 +72,25 @@ class PushNotificationManager @Inject constructor(
             conversationRepository.getConversation(payload.conversationId)
         }.getOrNull() ?: return
 
-        val message = awaitNotificationMessage(
+        val snapshot = awaitNotificationMessage(
             payload = payload,
             peerUserId = conversation.peerUserId,
         ) ?: return
+        val message = snapshot.message
         if (message.isMine) return
+
+        runCatching {
+            chatCacheRepository.upsertConversationDetails(conversation)
+            chatCacheRepository.replaceMessages(
+                conversationId = payload.conversationId,
+                messages = snapshot.messages,
+            )
+            chatCacheRepository.updateConversationLastMessagePreview(
+                conversationId = payload.conversationId,
+                lastMessagePreview = buildNotificationBody(message),
+                updatedAt = message.createdAt,
+            )
+        }
 
         val title = conversation.title
         val body = buildNotificationBody(message)
@@ -299,7 +315,7 @@ class PushNotificationManager @Inject constructor(
     private suspend fun awaitNotificationMessage(
         payload: PushPayload.NewMessage,
         peerUserId: Int,
-    ): com.example.securechatapp.domain.model.ChatMessage? {
+    ): NotificationMessageSnapshot? {
         repeat(MESSAGE_LOOKUP_ATTEMPTS) { attempt ->
             val messages = runCatching {
                 messageRepository.listMessages(
@@ -310,7 +326,10 @@ class PushNotificationManager @Inject constructor(
 
             val message = messages?.lastOrNull { it.messageId == payload.messageId }
             if (message != null) {
-                return message
+                return NotificationMessageSnapshot(
+                    message = message,
+                    messages = messages,
+                )
             }
 
             if (attempt < MESSAGE_LOOKUP_ATTEMPTS - 1) {
@@ -320,6 +339,11 @@ class PushNotificationManager @Inject constructor(
 
         return null
     }
+
+    private data class NotificationMessageSnapshot(
+        val message: com.example.securechatapp.domain.model.ChatMessage,
+        val messages: List<com.example.securechatapp.domain.model.ChatMessage>,
+    )
 
     private fun buildNotificationBody(
         message: com.example.securechatapp.domain.model.ChatMessage,

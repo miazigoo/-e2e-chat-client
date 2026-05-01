@@ -7,6 +7,7 @@ import com.example.securechatapp.data.local.db.toConversationListItem
 import com.example.securechatapp.data.local.db.toDomain
 import com.example.securechatapp.data.local.db.toEntity
 import com.example.securechatapp.domain.model.ChatMessage
+import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
 import javax.inject.Inject
@@ -83,10 +84,21 @@ class ChatCacheRepository @Inject constructor(
         conversationId: Int,
         messages: List<ChatMessage>,
     ) {
+        val existingMessagesById = messagesDao
+            .listForConversation(conversationId)
+            .map { it.toDomain(json) }
+            .associateBy { it.messageId }
+        val hydratedMessages = messages.map { incoming ->
+            preserveReadableCachedMessage(
+                cached = existingMessagesById[incoming.messageId],
+                incoming = incoming,
+            )
+        }
+
         database.withTransaction {
             messagesDao.deleteByConversationId(conversationId)
             messagesDao.upsertAll(
-                messages.map { message ->
+                hydratedMessages.map { message ->
                     message.toEntity(
                         conversationId = conversationId,
                         json = json,
@@ -142,5 +154,56 @@ class ChatCacheRepository @Inject constructor(
             lastMessagePreview = lastMessagePreview,
             updatedAt = updatedAt,
         )
+    }
+
+    private fun preserveReadableCachedMessage(
+        cached: ChatMessage?,
+        incoming: ChatMessage,
+    ): ChatMessage {
+        if (cached == null || incoming.text != UNDECRYPTABLE_MESSAGE_PLACEHOLDER) {
+            return incoming
+        }
+
+        if (cached.text == UNDECRYPTABLE_MESSAGE_PLACEHOLDER) {
+            return incoming
+        }
+
+        return incoming.copy(
+            text = cached.text,
+            hasAttachments = cached.hasAttachments || incoming.hasAttachments,
+            attachmentIds = if (incoming.attachmentIds.isNotEmpty()) {
+                incoming.attachmentIds
+            } else {
+                cached.attachmentIds
+            },
+            attachments = if (incoming.attachments.isNotEmpty()) {
+                incoming.attachments
+            } else {
+                cached.attachments
+            },
+            replyPreview = preserveReadablePreview(
+                cached = cached.replyPreview,
+                incoming = incoming.replyPreview,
+            ),
+            forwardPreview = preserveReadablePreview(
+                cached = cached.forwardPreview,
+                incoming = incoming.forwardPreview,
+            ),
+        )
+    }
+
+    private fun preserveReadablePreview(
+        cached: MessagePreview?,
+        incoming: MessagePreview?,
+    ): MessagePreview? {
+        if (incoming == null) return cached
+        if (incoming.text != UNDECRYPTABLE_MESSAGE_PLACEHOLDER) return incoming
+        if (cached == null || cached.text == UNDECRYPTABLE_MESSAGE_PLACEHOLDER) return incoming
+        return incoming.copy(text = cached.text)
+    }
+
+    private companion object {
+        const val UNDECRYPTABLE_MESSAGE_PLACEHOLDER =
+            "Сообщение не удалось расшифровать на этом устройстве"
     }
 }
