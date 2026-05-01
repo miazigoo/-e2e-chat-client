@@ -876,6 +876,8 @@ data class ConversationLastMessageDto(
     val messageUuid: String,
     @SerialName("sender_user_id")
     val senderUserId: Int,
+    @SerialName("sender_device_id")
+    val senderDeviceId: Int? = null,
     @SerialName("recipient_user_id")
     val recipientUserId: Int,
     @SerialName("message_type")
