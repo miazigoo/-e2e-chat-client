@@ -4,6 +4,7 @@ import com.example.securechatapp.data.remote.api.ChatBackendApi
 import com.example.securechatapp.data.remote.dto.ConversationListItemDto
 import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
 import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
+import com.example.securechatapp.domain.model.AttachmentItem
 import com.example.securechatapp.domain.model.ConversationDetails
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.MessagePreview
@@ -16,11 +17,22 @@ import kotlinx.serialization.json.Json
 @Singleton
 class ConversationRepository @Inject constructor(
     private val api: ChatBackendApi,
+    private val decryptedMessagePayloadCacheRepository: DecryptedMessagePayloadCacheRepository,
     json: Json,
 ) : BaseApiRepository(json) {
 
     suspend fun listConversations(): List<ConversationListItem> {
-        return safe { api.listConversations().data }.items.map {
+        val items = safe { api.listConversations().data }.items
+        val cachedPayloads = decryptedMessagePayloadCacheRepository.getByMessageIds(
+            items.flatMap { item ->
+                buildList {
+                    item.lastMessage?.messageId?.takeIf { it > 0 }?.let(::add)
+                    item.pinnedMessage?.messageId?.takeIf { it > 0 }?.let(::add)
+                }
+            }
+        )
+
+        return items.map {
             ConversationListItem(
                 conversationId = it.conversationId,
                 conversationUuid = it.conversationUuid,
@@ -29,7 +41,10 @@ class ConversationRepository @Inject constructor(
                 peerUserId = it.peer.userId,
                 peerNickname = it.peer.nickname ?: "user_${it.peer.userId}",
                 unreadCount = it.unreadCount,
-                lastMessagePreview = buildConversationPreview(it),
+                lastMessagePreview = buildConversationPreview(
+                    item = it,
+                    cachedPayloads = cachedPayloads,
+                ),
                 protectionMode = it.protectionMode,
                 messageTtlDays = it.messageTtlDays,
                 deleteAfterReadSeconds = it.deleteAfterReadSeconds,
@@ -39,7 +54,9 @@ class ConversationRepository @Inject constructor(
                 sharedSecretEnabled = it.sharedSecretEnabled,
                 sharedSecretFingerprint = it.sharedSecretFingerprint,
                 peerSharedSecretEnabled = it.peerSharedSecretEnabled,
-                pinnedMessage = it.pinnedMessage?.toDomain(),
+                pinnedMessage = it.pinnedMessage?.toDomain(
+                    cachedPayload = it.pinnedMessage.messageId.let(cachedPayloads::get),
+                ),
             )
         }
     }
@@ -79,6 +96,11 @@ class ConversationRepository @Inject constructor(
 
     suspend fun getConversation(conversationId: Int): ConversationDetails {
         val data = safe { api.getConversation(conversationId).data }
+        val cachedPayloads = decryptedMessagePayloadCacheRepository.getByMessageIds(
+            listOfNotNull(
+                data.pinnedMessage?.messageId?.takeIf { it > 0 },
+            )
+        )
         return ConversationDetails(
             conversationId = data.conversationId,
             conversationUuid = data.conversationUuid,
@@ -93,7 +115,9 @@ class ConversationRepository @Inject constructor(
             peerSharedSecretEnabled = data.peerSharedSecretEnabled,
             isActive = data.isActive,
             isPurged = data.isPurged,
-            pinnedMessage = data.pinnedMessage?.toDomain(),
+            pinnedMessage = data.pinnedMessage?.toDomain(
+                cachedPayload = data.pinnedMessage.messageId.let(cachedPayloads::get),
+            ),
         )
     }
 
@@ -149,28 +173,82 @@ class ConversationRepository @Inject constructor(
         }
     }
 
-    private fun buildConversationPreview(item: ConversationListItemDto): String {
+    private fun buildConversationPreview(
+        item: ConversationListItemDto,
+        cachedPayloads: Map<Int, DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload>,
+    ): String {
         val last = item.lastMessage ?: return "Нет сообщений"
         val isMine = last.senderUserId != item.peer.userId
 
-        val body = when {
-            last.hasAttachments && last.messageType == "file" -> "📎 Вложение"
-            last.hasAttachments -> "📎 Сообщение с вложением"
-            last.messageType == "service" -> "Сервисное сообщение"
-            else -> "Сообщение"
-        }
+        val body = cachedPayloads[last.messageId]
+            ?.toMessageBody(
+                messageType = last.messageType,
+                hasAttachments = last.hasAttachments,
+            )
+            ?: fallbackMessageBody(
+                messageType = last.messageType,
+                hasAttachments = last.hasAttachments,
+            )
 
         return if (isMine) "Вы: $body" else body
     }
+
+    private fun fallbackMessageBody(
+        messageType: String,
+        hasAttachments: Boolean,
+    ): String {
+        return when {
+            hasAttachments && messageType == "file" -> "📎 Вложение"
+            hasAttachments -> "📎 Сообщение с вложением"
+            messageType == "service" -> "Сервисное сообщение"
+            else -> "Сообщение"
+        }
+    }
+
+    private fun DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload.toMessageBody(
+        messageType: String,
+        hasAttachments: Boolean,
+    ): String {
+        val normalizedText = text.trim()
+        if (normalizedText.isNotEmpty() && normalizedText != "[attachment]") {
+            return normalizedText
+        }
+
+        return attachmentBody(attachments)
+            ?: fallbackMessageBody(
+                messageType = messageType,
+                hasAttachments = hasAttachments,
+            )
+    }
+
+    private fun attachmentBody(
+        attachments: List<AttachmentItem>,
+    ): String? {
+        if (attachments.isEmpty()) return null
+        return when (attachments.size) {
+            1 -> "📎 ${attachments.first().fileName}"
+            else -> "📎 ${attachments.first().fileName} +${attachments.size - 1}"
+        }
+    }
 }
 
-private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(): MessagePreview {
+private fun com.example.securechatapp.data.remote.dto.MessagePreviewDto.toDomain(
+    cachedPayload: DecryptedMessagePayloadCacheRepository.CachedDecryptedMessagePayload?,
+): MessagePreview {
     return MessagePreview(
         messageId = messageId,
         messageUuid = messageUuid,
         senderUserId = senderUserId,
         messageType = messageType,
-        text = "",
+        text = cachedPayload?.run {
+            val normalizedText = text.trim()
+            when {
+                normalizedText.isNotEmpty() && normalizedText != "[attachment]" -> normalizedText
+                attachments.isNotEmpty() -> attachments.first().fileName
+                hasAttachments -> "Вложение"
+                else -> "Сообщение"
+            }
+        } ?: if (hasAttachments) "Вложение" else "Сообщение",
         hasAttachments = hasAttachments,
         clientCreatedAt = clientCreatedAt,
     )
