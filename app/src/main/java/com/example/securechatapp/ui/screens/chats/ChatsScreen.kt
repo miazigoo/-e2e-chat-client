@@ -55,9 +55,11 @@ import androidx.compose.ui.unit.dp
 import com.example.securechatapp.ui.components.BrandMark
 import com.example.securechatapp.ui.components.BrandedSkeletonBlock
 import com.example.securechatapp.ui.components.BrandedSkeletonLines
+import com.example.securechatapp.data.repository.requiresImmediateUpdate
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import com.example.securechatapp.ui.components.BrandedEmptyState
+import com.example.securechatapp.data.files.ApkUpdatePhase
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import com.example.securechatapp.ui.theme.SecureChatTheme
 import java.time.LocalDate
@@ -151,8 +153,16 @@ fun ChatsScreen(
 
                 state.updateRelease?.let { release ->
                     Spacer(modifier = Modifier.height(10.dp))
-                    DismissibleInfoBanner(
-                        text = "Доступно обновление ${release.versionName} (${release.versionCode})",
+                    UpdateInfoBanner(
+                        text = if (release.requiresImmediateUpdate(com.example.securechatapp.BuildConfig.VERSION_CODE)) {
+                            "Требуется обновление ${release.versionName} (${release.versionCode})"
+                        } else {
+                            "Доступно обновление ${release.versionName} (${release.versionCode})"
+                        },
+                        secondaryText = state.updateInstallState.bannerMessage(),
+                        actionText = state.updateInstallState.actionText(),
+                        actionEnabled = state.updateInstallState.isActionEnabled(),
+                        onAction = viewModel::startAppUpdate,
                         onDismiss = viewModel::dismissUpdateBanner,
                     )
                 }
@@ -698,8 +708,12 @@ private fun InfoBanner(
 }
 
 @Composable
-private fun DismissibleInfoBanner(
+private fun UpdateInfoBanner(
     text: String,
+    secondaryText: String?,
+    actionText: String,
+    actionEnabled: Boolean,
+    onAction: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Surface(
@@ -707,23 +721,67 @@ private fun DismissibleInfoBanner(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
             Text(
                 text = text,
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onDismiss) {
-                Text("Скрыть")
+            secondaryText?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = onAction,
+                    enabled = actionEnabled,
+                ) {
+                    Text(actionText)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Скрыть")
+                }
             }
         }
     }
+}
+
+private fun com.example.securechatapp.data.files.ApkUpdateInstallState.actionText(): String {
+    return when (phase) {
+        ApkUpdatePhase.PERMISSION_REQUIRED -> "Разрешить"
+        ApkUpdatePhase.DOWNLOADING -> "Скачивается"
+        ApkUpdatePhase.DOWNLOADED -> "Установить"
+        ApkUpdatePhase.INSTALLING -> "Установка"
+        else -> "Обновить"
+    }
+}
+
+private fun com.example.securechatapp.data.files.ApkUpdateInstallState.bannerMessage(): String? {
+    return when (phase) {
+        ApkUpdatePhase.PERMISSION_REQUIRED -> message
+        ApkUpdatePhase.DOWNLOADING -> message ?: progressPercent?.let { "Скачивание APK: $it%" } ?: "Скачивание APK..."
+        ApkUpdatePhase.DOWNLOADED -> "APK скачан. Открою системную установку."
+        ApkUpdatePhase.INSTALLING -> "Открыл системную установку APK"
+        ApkUpdatePhase.FAILED -> message
+        else -> null
+    }
+}
+
+private fun com.example.securechatapp.data.files.ApkUpdateInstallState.isActionEnabled(): Boolean {
+    return phase != ApkUpdatePhase.DOWNLOADING && phase != ApkUpdatePhase.INSTALLING
 }
 
 private fun formatChatListTime(raw: String?): String {

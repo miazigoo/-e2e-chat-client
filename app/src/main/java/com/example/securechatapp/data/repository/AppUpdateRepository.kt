@@ -31,6 +31,8 @@ private fun com.example.securechatapp.data.remote.dto.LatestAppReleaseResponseDt
         fileSize = fileSize,
         sha256 = sha256,
         changelog = changelog,
+        forceUpdate = forceUpdate,
+        minSupportedVersionCode = minSupportedVersionCode,
         contentType = contentType,
         uploadedAt = uploadedAt,
         downloadUrl = downloadUrl,
@@ -43,6 +45,7 @@ private fun com.example.securechatapp.data.remote.dto.AppVersionCheckResponseDto
         currentVersionCode = currentVersionCode,
         latestVersionCode = latestVersionCode,
         updateAvailable = updateAvailable,
+        updateRequired = updateRequired,
         release = release.toDomain(),
     )
 }

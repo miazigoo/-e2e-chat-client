@@ -353,6 +353,14 @@ class RealtimeWebSocketManager @Inject constructor(
                 val platform = release["platform"]?.jsonPrimitive?.contentOrNull ?: "android"
                 val sha256 = release["sha256"]?.jsonPrimitive?.contentOrNull ?: ""
                 val changelog = release["changelog"]?.jsonPrimitive?.contentOrNull
+                val forceUpdate = release["force_update"]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.toBooleanStrictOrNull()
+                    ?: false
+                val minSupportedVersionCode = release["min_supported_version_code"]
+                    ?.jsonPrimitive
+                    ?.intOrNull
                 val contentType = release["content_type"]?.jsonPrimitive?.contentOrNull
                     ?: "application/vnd.android.package-archive"
 
@@ -366,6 +374,8 @@ class RealtimeWebSocketManager @Inject constructor(
                             fileSize = fileSize,
                             sha256 = sha256,
                             changelog = changelog,
+                            forceUpdate = forceUpdate,
+                            minSupportedVersionCode = minSupportedVersionCode,
                             contentType = contentType,
                             uploadedAt = uploadedAt,
                             downloadUrl = "",

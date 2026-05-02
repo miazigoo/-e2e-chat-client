@@ -2,10 +2,14 @@ package com.example.securechatapp.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.core.common.ConversationsRefreshBus
+import com.example.securechatapp.data.files.ApkUpdateInstallState
+import com.example.securechatapp.data.files.ApkUpdateManager
 import com.example.securechatapp.data.remote.websocket.RealtimeEvent
 import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.AppUpdateRepository
+import com.example.securechatapp.data.repository.AppUpdateStateRepository
 import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.SessionRepository
@@ -28,6 +32,7 @@ data class ChatsUiState(
     val users: List<UserSearchItem> = emptyList(),
     val conversations: List<ConversationListItem> = emptyList(),
     val updateRelease: AppReleaseInfo? = null,
+    val updateInstallState: ApkUpdateInstallState = ApkUpdateInstallState(),
 )
 
 @HiltViewModel
@@ -38,6 +43,8 @@ class ChatsViewModel @Inject constructor(
     private val realtimeWebSocketManager: RealtimeWebSocketManager,
     private val conversationsRefreshBus: ConversationsRefreshBus,
     private val appUpdateRepository: AppUpdateRepository,
+    private val apkUpdateManager: ApkUpdateManager,
+    private val appUpdateStateRepository: AppUpdateStateRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatsUiState())
@@ -47,6 +54,7 @@ class ChatsViewModel @Inject constructor(
         observeCachedConversations()
         observeRefreshBus()
         observeRealtimeEvents()
+        observeUpdateInstaller()
         connectRealtime()
         refreshConversations()
     }
@@ -225,8 +233,12 @@ class ChatsViewModel @Inject constructor(
     fun dismissUpdateBanner() {
         _state.value = _state.value.copy(
             updateRelease = null,
-            info = null,
         )
+    }
+
+    fun startAppUpdate() {
+        val release = _state.value.updateRelease ?: return
+        apkUpdateManager.startOrInstall(release)
     }
 
     private fun connectRealtime() {
@@ -289,15 +301,37 @@ class ChatsViewModel @Inject constructor(
         }
     }
 
+    private fun observeUpdateInstaller() {
+        viewModelScope.launch {
+            apkUpdateManager.state.collect { installState ->
+                _state.value = _state.value.copy(
+                    updateInstallState = installState,
+                )
+            }
+        }
+    }
+
     private fun handleAppUpdateAvailable(release: AppReleaseInfo) {
         viewModelScope.launch {
             val enrichedRelease = runCatching {
                 appUpdateRepository.getLatestRelease()
             }.getOrElse { release }
 
+            if (enrichedRelease.versionCode <= BuildConfig.VERSION_CODE) {
+                _state.value = _state.value.copy(
+                    updateRelease = null,
+                    error = null,
+                )
+                apkUpdateManager.syncState()
+                appUpdateStateRepository.clearIfInstalled()
+                return@launch
+            }
+
+            apkUpdateManager.syncState()
+            appUpdateStateRepository.publishRelease(enrichedRelease)
+
             _state.value = _state.value.copy(
                 updateRelease = enrichedRelease,
-                info = "Доступно обновление ${enrichedRelease.versionName} (${enrichedRelease.versionCode})",
                 error = null,
             )
         }

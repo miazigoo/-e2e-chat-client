@@ -39,6 +39,8 @@ data class AppReleaseInfo(
     val fileSize: Long,
     val sha256: String,
     val changelog: String?,
+    val forceUpdate: Boolean,
+    val minSupportedVersionCode: Int?,
     val contentType: String,
     val uploadedAt: String,
     val downloadUrl: String,
@@ -49,5 +51,6 @@ data class AppVersionCheck(
     val currentVersionCode: Int,
     val latestVersionCode: Int,
     val updateAvailable: Boolean,
+    val updateRequired: Boolean,
     val release: AppReleaseInfo,
 )

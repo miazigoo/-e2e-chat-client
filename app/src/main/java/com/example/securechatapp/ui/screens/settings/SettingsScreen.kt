@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.data.files.ApkUpdatePhase
 import com.example.securechatapp.push.NotificationSoundCatalog
 import com.example.securechatapp.ui.picker.SystemDocumentPickerActivity
 import com.example.securechatapp.ui.picker.SystemDocumentPickerBus
@@ -424,20 +425,38 @@ fun SettingsScreen(
                     )
                 }
 
-                state.updateDownloadUrl?.let { url ->
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = android.net.Uri.parse(url)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
+                Button(
+                    onClick = viewModel::startAppUpdate,
+                    enabled = state.latestVersionCode != null &&
+                        state.updateInstallState.phase != ApkUpdatePhase.DOWNLOADING &&
+                        state.updateInstallState.phase != ApkUpdatePhase.INSTALLING,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        when (state.updateInstallState.phase) {
+                            ApkUpdatePhase.PERMISSION_REQUIRED -> "Разрешить установку APK"
+                            ApkUpdatePhase.DOWNLOADING -> state.updateInstallState.progressPercent
+                                ?.let { "Скачивание APK: $it%" }
+                                ?: "Скачивание APK..."
+                            ApkUpdatePhase.DOWNLOADED -> "Установить обновление"
+                            ApkUpdatePhase.INSTALLING -> "Открыт установщик APK"
+                            else -> "Скачать и установить"
+                        }
+                    )
+                }
+
+                state.updateInstallState.message?.let { message ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (state.updateInstallState.phase == ApkUpdatePhase.FAILED) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                    ) {
-                        Text("Открыть ссылку на APK")
-                    }
+                    )
                 }
             }
 

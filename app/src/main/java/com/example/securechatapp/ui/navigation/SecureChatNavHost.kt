@@ -8,6 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -28,6 +31,8 @@ import com.example.securechatapp.ui.viewmodel.ChatsViewModel
 import com.example.securechatapp.ui.viewmodel.ConversationMediaViewModel
 import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
+import com.example.securechatapp.ui.viewmodel.UpdateGateViewModel
+import com.example.securechatapp.data.files.ApkUpdatePhase
 
 private const val LOGIN_RESULT_REGISTERED_NICKNAME = "login_result_registered_nickname"
 
@@ -41,7 +46,9 @@ fun SecureChatNavHost(
 ) {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
+    val updateGateViewModel: UpdateGateViewModel = hiltViewModel()
     val authState by authViewModel.uiState.collectAsState()
+    val updateGateState by updateGateViewModel.state.collectAsState()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
@@ -271,5 +278,49 @@ fun SecureChatNavHost(
                 onBack = { navController.popBackStack() },
             )
         }
+    }
+
+    updateGateState.mandatoryRelease?.let { release ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Требуется обновление") },
+            text = {
+                Text(
+                    buildString {
+                        append("Эта версия SecureChat больше не поддерживается сервером.")
+                        append("\n\n")
+                        append("Нужно установить ${release.versionName} (${release.versionCode}).")
+                        release.changelog?.takeIf { it.isNotBlank() }?.let {
+                            append("\n\n")
+                            append(it)
+                        }
+                        updateGateState.installState.message?.takeIf { it.isNotBlank() }?.let {
+                            append("\n\n")
+                            append(it)
+                        }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = updateGateViewModel::startUpdate,
+                    enabled = updateGateState.installState.phase != ApkUpdatePhase.DOWNLOADING &&
+                        updateGateState.installState.phase != ApkUpdatePhase.INSTALLING,
+                ) {
+                    Text(
+                        when (updateGateState.installState.phase) {
+                            ApkUpdatePhase.PERMISSION_REQUIRED -> "Разрешить"
+                            ApkUpdatePhase.DOWNLOADING -> updateGateState.installState.progressPercent
+                                ?.let { "Скачивание $it%" }
+                                ?: "Скачивание"
+                            ApkUpdatePhase.DOWNLOADED -> "Установить"
+                            ApkUpdatePhase.INSTALLING -> "Установка"
+                            else -> "Обновить"
+                        }
+                    )
+                }
+            },
+            dismissButton = null,
+        )
     }
 }

@@ -16,6 +16,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
+import com.example.securechatapp.BuildConfig
 import com.example.securechatapp.MainActivity
 import com.example.securechatapp.R
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
@@ -180,6 +181,7 @@ class PushNotificationManager @Inject constructor(
     private suspend fun showAppUpdateNotification(payload: PushPayload.AppUpdateAvailable) {
         if (!notificationPreferenceDataSource.isApkUpdateNotificationsEnabled()) return
         if (!canPostNotifications()) return
+        if (payload.versionCode <= BuildConfig.VERSION_CODE) return
         ensureUpdatesChannel()
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -194,7 +196,13 @@ class PushNotificationManager @Inject constructor(
         )
 
         val content = buildString {
-            append("Доступна версия ${payload.versionName} (${payload.versionCode})")
+            append(
+                if (payload.forceUpdate) {
+                    "Требуется версия ${payload.versionName} (${payload.versionCode})"
+                } else {
+                    "Доступна версия ${payload.versionName} (${payload.versionCode})"
+                }
+            )
             payload.changelog?.takeIf { it.isNotBlank() }?.let {
                 append(". ")
                 append(it)
@@ -203,7 +211,13 @@ class PushNotificationManager @Inject constructor(
 
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_stat_secure_chat)
-            .setContentTitle("Новое обновление Secure Chat")
+            .setContentTitle(
+                if (payload.forceUpdate) {
+                    "Требуется обновление Secure Chat"
+                } else {
+                    "Новое обновление Secure Chat"
+                }
+            )
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setCategory(NotificationCompat.CATEGORY_STATUS)

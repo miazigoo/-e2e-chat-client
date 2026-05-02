@@ -299,6 +299,10 @@ data class LatestAppReleaseResponseDto(
     val fileSize: Long,
     val sha256: String,
     val changelog: String? = null,
+    @SerialName("force_update")
+    val forceUpdate: Boolean = false,
+    @SerialName("min_supported_version_code")
+    val minSupportedVersionCode: Int? = null,
     @SerialName("content_type")
     val contentType: String,
     @SerialName("uploaded_at")
@@ -317,6 +321,8 @@ data class AppVersionCheckResponseDto(
     val latestVersionCode: Int,
     @SerialName("update_available")
     val updateAvailable: Boolean,
+    @SerialName("update_required")
+    val updateRequired: Boolean = false,
     val release: LatestAppReleaseResponseDto,
 )
 

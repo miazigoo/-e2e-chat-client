@@ -24,6 +24,8 @@ sealed interface PushPayload {
         val changelog: String?,
         val fileName: String,
         val fileSize: Long,
+        val forceUpdate: Boolean,
+        val minSupportedVersionCode: Int?,
     ) : PushPayload
 }
 
@@ -70,6 +72,10 @@ fun parsePushPayload(data: Map<String, String>): PushPayload? {
             val versionCode = data["version_code"]?.toIntOrNull()
             val fileName = data["file_name"]
             val fileSize = data["file_size"]?.toLongOrNull()
+            val forceUpdate = data["force_update"]?.toBooleanStrictOrNull() ?: false
+            val minSupportedVersionCode = data["min_supported_version_code"]
+                ?.takeIf { it.isNotBlank() }
+                ?.toIntOrNull()
             if (
                 !versionName.isNullOrBlank() &&
                 versionCode != null &&
@@ -82,6 +88,8 @@ fun parsePushPayload(data: Map<String, String>): PushPayload? {
                     changelog = data["changelog"]?.takeIf { it.isNotBlank() },
                     fileName = fileName,
                     fileSize = fileSize,
+                    forceUpdate = forceUpdate,
+                    minSupportedVersionCode = minSupportedVersionCode,
                 )
             } else {
                 null

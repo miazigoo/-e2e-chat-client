@@ -6,12 +6,15 @@ import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.securechatapp.BuildConfig
+import com.example.securechatapp.data.files.ApkUpdateInstallState
+import com.example.securechatapp.data.files.ApkUpdateManager
 import com.example.securechatapp.data.repository.DeviceRepository
 import com.example.securechatapp.data.local.preferences.NotificationPreferenceDataSource
 import com.example.securechatapp.data.local.preferences.SecureSessionLocalDataSource
 import com.example.securechatapp.data.local.preferences.ThemePreferenceDataSource
 import com.example.securechatapp.data.repository.BackendApiException
 import com.example.securechatapp.data.repository.AppUpdateRepository
+import com.example.securechatapp.data.repository.AppUpdateStateRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.data.repository.UpdateUserProfileInput
 import com.example.securechatapp.data.repository.UserProfileRepository
@@ -87,6 +90,7 @@ data class SettingsUiState(
     val latestVersionCode: Int? = null,
     val latestVersionChangelog: String? = null,
     val isCheckingForUpdates: Boolean = false,
+    val updateInstallState: ApkUpdateInstallState = ApkUpdateInstallState(),
     val pushRegistrationStatus: String = "Не запускалась",
     val pushRegistrationTokenPreview: String? = null,
     val pushRegistrationError: String? = null,
@@ -105,6 +109,8 @@ class SettingsViewModel @Inject constructor(
     private val pushRegistrationManager: PushRegistrationManager,
     private val userProfileRepository: UserProfileRepository,
     private val appUpdateRepository: AppUpdateRepository,
+    private val apkUpdateManager: ApkUpdateManager,
+    private val appUpdateStateRepository: AppUpdateStateRepository,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -117,9 +123,20 @@ class SettingsViewModel @Inject constructor(
         observeTheme()
         observeNotificationPreferences()
         observePushRegistrationState()
+        observeUpdateInstaller()
         refreshProfile()
         refreshDevices()
         checkForAppUpdates()
+    }
+
+    private fun observeUpdateInstaller() {
+        viewModelScope.launch {
+            apkUpdateManager.state.collectLatest { installState ->
+                _uiState.update {
+                    it.copy(updateInstallState = installState)
+                }
+            }
+        }
     }
 
     private fun observeSession() {
@@ -520,11 +537,17 @@ class SettingsViewModel @Inject constructor(
 
             runCatching { appUpdateRepository.checkForUpdate(currentVersionCode) }
                 .onSuccess { result ->
+                    apkUpdateManager.syncState()
+                    appUpdateStateRepository.publishVersionCheck(result)
                     _uiState.update {
                         it.copy(
                             isCheckingForUpdates = false,
                             updateStatus = if (result.updateAvailable) {
-                                "Доступно обновление ${result.release.versionName} (${result.release.versionCode})"
+                                if (result.updateRequired) {
+                                    "Требуется обновление ${result.release.versionName} (${result.release.versionCode})"
+                                } else {
+                                    "Доступно обновление ${result.release.versionName} (${result.release.versionCode})"
+                                }
                             } else {
                                 "Установлена актуальная версия"
                             },
@@ -541,6 +564,31 @@ class SettingsViewModel @Inject constructor(
                             isCheckingForUpdates = false,
                             updateStatus = "Не удалось проверить обновления",
                             error = error.message ?: "Не удалось проверить обновления",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun startAppUpdate() {
+        val latestVersionName = _uiState.value.latestVersionName
+        val latestVersionCode = _uiState.value.latestVersionCode
+        if (latestVersionName == null || latestVersionCode == null) {
+            _uiState.update {
+                it.copy(error = "Сначала проверьте обновления")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching { appUpdateRepository.getLatestRelease() }
+                .onSuccess { release ->
+                    apkUpdateManager.startOrInstall(release)
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            error = error.message ?: "Не удалось получить релиз для установки",
                         )
                     }
                 }
