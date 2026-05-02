@@ -110,4 +110,16 @@ interface ConversationCacheDao {
         lastMessagePreview: String,
         updatedAt: String?,
     )
+
+    @Query(
+        """
+        UPDATE conversations_cache
+        SET unreadCount = :unreadCount
+        WHERE conversationId = :conversationId
+        """
+    )
+    suspend fun updateUnreadCount(
+        conversationId: Int,
+        unreadCount: Int,
+    )
 }

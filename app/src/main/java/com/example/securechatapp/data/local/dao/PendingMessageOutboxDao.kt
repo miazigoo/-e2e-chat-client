@@ -84,6 +84,7 @@ interface PendingMessageOutboxDao {
         """
         UPDATE pending_message_outbox
         SET attachmentIdsCsv = :attachmentIdsCsv,
+            attachmentTagIdsCsv = :attachmentTagIdsCsv,
             attachmentDescriptorsJson = :attachmentDescriptorsJson,
             attachmentPreviewJson = :attachmentPreviewJson,
             hasAttachments = :hasAttachments
@@ -93,6 +94,7 @@ interface PendingMessageOutboxDao {
     suspend fun updatePreparedAttachments(
         localMessageId: Int,
         attachmentIdsCsv: String,
+        attachmentTagIdsCsv: String,
         attachmentDescriptorsJson: String,
         attachmentPreviewJson: String,
         hasAttachments: Boolean,

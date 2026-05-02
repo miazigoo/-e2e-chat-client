@@ -35,6 +35,7 @@ data class PendingOutgoingMessage(
     val replyPreview: MessagePreview?,
     val localAttachmentUris: List<String>,
     val attachmentIds: List<Int>,
+    val attachmentTagIds: List<Int>,
     val attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     val createdAt: String,
     val status: MessageSendStatus,
@@ -67,6 +68,7 @@ class OutboxRepository @Inject constructor(
         replyToMessageId: Int?,
         replyPreview: MessagePreview?,
         localAttachmentUris: List<String>,
+        attachmentTagIds: List<Int>,
         attachmentPreviews: List<AttachmentItem>,
         attachmentIds: List<Int>,
         attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
@@ -93,6 +95,7 @@ class OutboxRepository @Inject constructor(
             replyPreviewJson = encodeMessagePreviewJson(replyPreview),
             localAttachmentUrisJson = encodeLocalAttachmentUris(localAttachmentUris),
             attachmentIdsCsv = attachmentIds.distinct().joinToString(","),
+            attachmentTagIdsCsv = attachmentTagIds.distinct().joinToString(","),
             attachmentDescriptorsJson = encodeAttachmentDescriptors(attachmentDescriptors),
             attachmentPreviewJson = encodeAttachmentsJson(
                 json = json,
@@ -200,10 +203,12 @@ class OutboxRepository @Inject constructor(
         attachmentDescriptors: List<EncryptedAttachmentDescriptor>,
     ) {
         val attachmentIds = attachmentDescriptors.map { it.attachmentId }.distinct()
+        val current = dao.getByLocalMessageId(localMessageId)
         val previews = attachmentDescriptors.map(::descriptorToPreviewAttachment)
         dao.updatePreparedAttachments(
             localMessageId = localMessageId,
             attachmentIdsCsv = attachmentIds.joinToString(","),
+            attachmentTagIdsCsv = current?.attachmentTagIdsCsv.orEmpty(),
             attachmentDescriptorsJson = encodeAttachmentDescriptors(attachmentDescriptors),
             attachmentPreviewJson = encodeAttachmentsJson(
                 json = json,
@@ -311,6 +316,9 @@ class OutboxRepository @Inject constructor(
             replyPreview = decodeMessagePreviewJson(replyPreviewJson),
             localAttachmentUris = decodeLocalAttachmentUris(localAttachmentUrisJson),
             attachmentIds = attachmentIdsCsv
+                .split(",")
+                .mapNotNull { it.trim().takeIf(String::isNotBlank)?.toIntOrNull() },
+            attachmentTagIds = attachmentTagIdsCsv
                 .split(",")
                 .mapNotNull { it.trim().takeIf(String::isNotBlank)?.toIntOrNull() },
             attachmentDescriptors = decodeAttachmentDescriptors(attachmentDescriptorsJson),

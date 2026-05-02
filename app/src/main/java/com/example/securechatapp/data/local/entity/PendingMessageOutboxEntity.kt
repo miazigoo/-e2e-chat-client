@@ -24,6 +24,7 @@ data class PendingMessageOutboxEntity(
     val replyPreviewJson: String? = null,
     val localAttachmentUrisJson: String = "[]",
     val attachmentIdsCsv: String = "",
+    val attachmentTagIdsCsv: String = "",
     val attachmentDescriptorsJson: String = "[]",
     val attachmentPreviewJson: String = "[]",
     val hasAttachments: Boolean = false,

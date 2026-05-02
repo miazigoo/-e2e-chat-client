@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -76,20 +78,56 @@ private data class PendingAttachmentUi(
         get() = mimeType?.startsWith("image/") == true
 }
 
+private val PendingAttachmentListSaver = listSaver<List<PendingAttachmentUi>, String>(
+    save = { items ->
+        items.map { item ->
+            listOf(
+                item.uri.toString(),
+                item.displayName,
+                item.mimeType.orEmpty(),
+                item.fileSize.toString(),
+            ).joinToString("\u001F")
+        }
+    },
+    restore = { saved ->
+        saved.mapNotNull { encoded ->
+            val parts = encoded.split("\u001F")
+            if (parts.size != 4) {
+                null
+            } else {
+                PendingAttachmentUi(
+                    uri = Uri.parse(parts[0]),
+                    displayName = parts[1],
+                    mimeType = parts[2].ifBlank { null },
+                    fileSize = parts[3].toLongOrNull() ?: 0L,
+                )
+            }
+        }
+    },
+)
+
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ConversationScreen(
     viewModel: ConversationViewModel,
     onBack: () -> Unit,
+    onOpenMedia: (Int) -> Unit,
     onLoggedOut: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
     var message by remember { mutableStateOf("") }
-    var pendingAttachments by remember { mutableStateOf<List<PendingAttachmentUi>>(emptyList()) }
+    var pendingAttachments by rememberSaveable(stateSaver = PendingAttachmentListSaver) {
+        mutableStateOf(emptyList<PendingAttachmentUi>())
+    }
+    var draftAttachmentTagIds by rememberSaveable { mutableStateOf(emptySet<Int>()) }
     var previewingPendingAttachment by remember { mutableStateOf<PendingAttachmentUi?>(null) }
     var showSharedSecretSettings by remember { mutableStateOf(false) }
     var highlightedMessageId by remember { mutableStateOf<Int?>(null) }
+    var showDraftTagPicker by remember { mutableStateOf(false) }
+    var showTagManager by remember { mutableStateOf(false) }
+    var editingAttachmentTags by remember { mutableStateOf<com.example.securechatapp.domain.model.AttachmentItem?>(null) }
 
     val listState = rememberLazyListState()
 
@@ -250,6 +288,9 @@ fun ConversationScreen(
                 subtitle = subtitle,
                 onBack = onBack,
                 onLogout = { viewModel.logout(onLoggedOut) },
+                onTitleClick = {
+                    state.conversationId?.let(onOpenMedia)
+                },
                 onSharedSecretClick = { showSharedSecretSettings = true },
                 isLoggingOut = state.isLoggingOut,
                 sharedSecretEnabled = state.sharedSecretEnabled,
@@ -260,7 +301,7 @@ fun ConversationScreen(
                 Banner(
                     text = it,
                     isError = true,
-                    onDismiss = viewModel::dismissError,
+                    onDismiss = { viewModel.dismissError() },
                 )
             }
 
@@ -358,15 +399,25 @@ fun ConversationScreen(
             if (pendingAttachments.isNotEmpty()) {
                 PendingAttachmentsBar(
                     items = pendingAttachments,
+                    selectedTags = state.conversationMediaTags.filter { draftAttachmentTagIds.contains(it.tagId) },
+                    onEditTags = {
+                        viewModel.ensureConversationMediaTagsLoaded()
+                        showDraftTagPicker = true
+                    },
                     onPreview = { previewingPendingAttachment = it },
                     onRemove = { uri ->
-                        pendingAttachments = pendingAttachments.filterNot { it.uri == uri }
+                        val updatedItems = pendingAttachments.filterNot { it.uri == uri }
+                        pendingAttachments = updatedItems
+                        if (updatedItems.isEmpty()) {
+                            draftAttachmentTagIds = emptySet()
+                        }
                         if (previewingPendingAttachment?.uri == uri) {
                             previewingPendingAttachment = null
                         }
                     },
                     onClearAll = {
                         pendingAttachments = emptyList()
+                        draftAttachmentTagIds = emptySet()
                         previewingPendingAttachment = null
                     },
                 )
@@ -404,11 +455,13 @@ fun ConversationScreen(
 
                     viewModel.sendMessage(
                         text = textToSend,
+                        attachmentTagIds = draftAttachmentTagIds.toList().sorted(),
                         attachmentDrafts = attachmentDrafts,
                         attachmentUris = attachmentsToSend,
                     ) {
                         message = ""
                         pendingAttachments = emptyList()
+                        draftAttachmentTagIds = emptySet()
                     }
                 },
                 isUploading = state.isUploadingAttachment || state.isSubmittingMessage,
@@ -418,20 +471,25 @@ fun ConversationScreen(
             )
         }
 
-        if (state.attachmentSheetMessageId != null) {
-            MessageAttachmentsDialog(
-                attachments = state.selectedMessageAttachments,
-                attachmentLocalStates = state.attachmentLocalStates,
-                inlineAttachmentPreviews = state.inlineAttachmentPreviews,
-                isLoading = state.isLoadingAttachments,
-                downloadingAttachmentId = state.downloadingAttachmentId,
-                onDismiss = viewModel::dismissMessageAttachments,
+            if (state.attachmentSheetMessageId != null) {
+                MessageAttachmentsDialog(
+                    attachments = state.selectedMessageAttachments,
+                    availableTags = state.conversationMediaTags,
+                    attachmentLocalStates = state.attachmentLocalStates,
+                    inlineAttachmentPreviews = state.inlineAttachmentPreviews,
+                    isLoading = state.isLoadingAttachments,
+                    downloadingAttachmentId = state.downloadingAttachmentId,
+                    onDismiss = viewModel::dismissMessageAttachments,
                 onAttachmentClick = { attachment ->
                     viewModel.onAttachmentSelected(attachment)
-                },
-                onRequestImagePreview = viewModel::ensureInlineImagePreview,
-            )
-        }
+                    },
+                    onRequestImagePreview = viewModel::ensureInlineImagePreview,
+                    onEditTags = { attachment ->
+                        viewModel.ensureConversationMediaTagsLoaded()
+                        editingAttachmentTags = attachment
+                    },
+                )
+            }
 
         if (state.isLoadingImagePreview || state.imagePreviewUrl != null || state.imagePreviewBytes != null) {
             ImagePreviewDialog(
@@ -478,6 +536,55 @@ fun ConversationScreen(
                 isForwarding = state.isForwardingMessage,
                 onDismiss = viewModel::dismissForwardPicker,
                 onForwardToConversation = viewModel::forwardSelectedMessage,
+            )
+        }
+
+        if (showDraftTagPicker) {
+            AttachmentTagPickerDialog(
+                title = "Теги для отправки",
+                tags = state.conversationMediaTags,
+                isLoading = state.isLoadingMediaTags,
+                selectedTagIds = draftAttachmentTagIds,
+                onDismiss = { showDraftTagPicker = false },
+                onApply = { selected ->
+                    draftAttachmentTagIds = selected.toSet()
+                    showDraftTagPicker = false
+                },
+                onOpenManageTags = {
+                    showDraftTagPicker = false
+                    showTagManager = true
+                },
+            )
+        }
+
+        editingAttachmentTags?.let { attachment ->
+            AttachmentTagPickerDialog(
+                title = "Теги вложения",
+                tags = state.conversationMediaTags,
+                isLoading = state.isLoadingMediaTags,
+                selectedTagIds = attachment.mediaTags.map { it.tagId }.toSet(),
+                onDismiss = { editingAttachmentTags = null },
+                onApply = { selected ->
+                    viewModel.setAttachmentTags(
+                        attachmentId = attachment.attachmentId,
+                        tagIds = selected,
+                    )
+                    editingAttachmentTags = null
+                },
+                onOpenManageTags = {
+                    editingAttachmentTags = null
+                    showTagManager = true
+                },
+            )
+        }
+
+        if (showTagManager) {
+            ConversationMediaTagManagerDialog(
+                tags = state.conversationMediaTags,
+                onDismiss = { showTagManager = false },
+                onCreateTag = viewModel::createConversationMediaTag,
+                onUpdateTag = viewModel::updateConversationMediaTag,
+                onDeleteTag = viewModel::deleteConversationMediaTag,
             )
         }
 
@@ -556,9 +663,12 @@ private fun PinnedMessageHeader(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PendingAttachmentsBar(
     items: List<PendingAttachmentUi>,
+    selectedTags: List<com.example.securechatapp.domain.model.MediaTag>,
+    onEditTags: () -> Unit,
     onPreview: (PendingAttachmentUi) -> Unit,
     onRemove: (Uri) -> Unit,
     onClearAll: () -> Unit,
@@ -590,6 +700,37 @@ private fun PendingAttachmentsBar(
                 if (items.size > 1) {
                     TextButton(onClick = onClearAll) {
                         Text("Очистить")
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Теги",
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                TextButton(onClick = onEditTags) {
+                    Text(if (selectedTags.isEmpty()) "Выбрать" else "Изменить")
+                }
+            }
+
+            if (selectedTags.isNotEmpty()) {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    selectedTags.forEach { tag ->
+                        MediaTagChip(
+                            tag = tag,
+                            selected = true,
+                            onClick = onEditTags,
+                        )
                     }
                 }
             }

@@ -101,6 +101,7 @@ class OutboxDispatcher @Inject constructor(
                 plainText = pending.plainText,
                 replyToMessageId = pending.replyToMessageId,
                 attachmentIds = preparedDescriptors.map { it.attachmentId },
+                attachmentTagIds = pending.attachmentTagIds,
                 attachmentDescriptors = preparedDescriptors,
                 messageUuid = pending.clientMessageUuid,
             )

@@ -4,9 +4,11 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,12 +32,14 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.securechatapp.data.files.AttachmentLocalState
 import com.example.securechatapp.domain.model.AttachmentItem
+import com.example.securechatapp.domain.model.MediaTag
 import com.example.securechatapp.ui.viewmodel.InlineAttachmentPreviewUi
 import java.util.Locale
 
 @Composable
 fun MessageAttachmentsDialog(
     attachments: List<AttachmentItem>,
+    availableTags: List<MediaTag>,
     attachmentLocalStates: Map<Int, AttachmentLocalState>,
     inlineAttachmentPreviews: Map<Int, InlineAttachmentPreviewUi>,
     isLoading: Boolean,
@@ -43,6 +47,7 @@ fun MessageAttachmentsDialog(
     onDismiss: () -> Unit,
     onAttachmentClick: (AttachmentItem) -> Unit,
     onRequestImagePreview: (AttachmentItem) -> Unit,
+    onEditTags: (AttachmentItem) -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -78,12 +83,14 @@ fun MessageAttachmentsDialog(
                                 localState = localState,
                                 preview = inlineAttachmentPreviews[attachment.attachmentId],
                                 isDownloading = downloadingAttachmentId == attachment.attachmentId,
+                                availableTags = availableTags,
                                 onClick = {
                                     if (attachment.canDownload) {
                                         onAttachmentClick(attachment)
                                     }
                                 },
                                 onRequestImagePreview = onRequestImagePreview,
+                                onEditTags = onEditTags,
                             )
                         }
                     }
@@ -98,14 +105,17 @@ fun MessageAttachmentsDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AttachmentRow(
     attachment: AttachmentItem,
     localState: AttachmentLocalState,
     preview: InlineAttachmentPreviewUi?,
     isDownloading: Boolean,
+    availableTags: List<MediaTag>,
     onClick: () -> Unit,
     onRequestImagePreview: (AttachmentItem) -> Unit,
+    onEditTags: (AttachmentItem) -> Unit,
 ) {
     LaunchedEffect(attachment.attachmentId, attachment.canDownload, attachment.isImage) {
         if (attachment.isImage && attachment.canDownload) {
@@ -161,6 +171,34 @@ private fun AttachmentRow(
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
+                )
+
+                if (attachment.mediaTags.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        attachment.mediaTags.forEach { tag ->
+                            MediaTagChip(
+                                tag = tag,
+                                selected = true,
+                                onClick = { onEditTags(attachment) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            TextButton(
+                onClick = { onEditTags(attachment) },
+            ) {
+                Text(
+                    when {
+                        availableTags.isEmpty() -> "Создать тег"
+                        attachment.mediaTags.isEmpty() -> "Теги"
+                        else -> "Изменить"
+                    }
                 )
             }
         }

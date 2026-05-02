@@ -156,6 +156,16 @@ class ChatCacheRepository @Inject constructor(
         )
     }
 
+    suspend fun updateConversationUnreadCount(
+        conversationId: Int,
+        unreadCount: Int,
+    ) {
+        conversationsDao.updateUnreadCount(
+            conversationId = conversationId,
+            unreadCount = unreadCount,
+        )
+    }
+
     private fun preserveReadableCachedMessage(
         cached: ChatMessage?,
         incoming: ChatMessage,

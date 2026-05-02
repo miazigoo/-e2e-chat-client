@@ -3,14 +3,18 @@ package com.example.securechatapp.data.remote.api
 import com.example.securechatapp.data.remote.dto.ApiEnvelopeDto
 import com.example.securechatapp.data.remote.dto.BootstrapDeviceRequestDto
 import com.example.securechatapp.data.remote.dto.BootstrapDeviceResponseDto
+import com.example.securechatapp.data.remote.dto.BatchMessageAttachmentsRequestDto
+import com.example.securechatapp.data.remote.dto.BatchMessageAttachmentsResponseDto
 import com.example.securechatapp.data.remote.dto.CompleteUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CompleteUploadSessionResponseDto
 import com.example.securechatapp.data.remote.dto.ConversationEventsResponseDto
 import com.example.securechatapp.data.remote.dto.CreateConversationRequestDto
 import com.example.securechatapp.data.remote.dto.CreateConversationResponseDto
+import com.example.securechatapp.data.remote.dto.CreateMediaTagRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionRequestDto
 import com.example.securechatapp.data.remote.dto.CreateUploadSessionResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteConversationResponseDto
+import com.example.securechatapp.data.remote.dto.DeleteMediaTagResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesRequestDto
 import com.example.securechatapp.data.remote.dto.DeleteMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.DeleteMessageReactionResponseDto
@@ -20,6 +24,7 @@ import com.example.securechatapp.data.remote.dto.ForwardMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.GetConversationResponseDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsRequestDto
 import com.example.securechatapp.data.remote.dto.InitAttachmentsResponseDto
+import com.example.securechatapp.data.remote.dto.ListMediaTagsResponseDto
 import com.example.securechatapp.data.remote.dto.ListConversationsResponseDto
 import com.example.securechatapp.data.remote.dto.ListMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.LoginRequestDto
@@ -38,9 +43,12 @@ import com.example.securechatapp.data.remote.dto.RevokeCurrentDeviceResponseDto
 import com.example.securechatapp.data.remote.dto.SearchMessagesResponseDto
 import com.example.securechatapp.data.remote.dto.SendMessageRequestDto
 import com.example.securechatapp.data.remote.dto.SendMessageResponseDto
+import com.example.securechatapp.data.remote.dto.SetAttachmentTagsRequestDto
+import com.example.securechatapp.data.remote.dto.AttachmentTagsResponseDto
 import com.example.securechatapp.data.remote.dto.SetMessageReactionRequestDto
 import com.example.securechatapp.data.remote.dto.SetMessageReactionResponseDto
 import com.example.securechatapp.data.remote.dto.SharedMessagesResponseDto
+import com.example.securechatapp.data.remote.dto.UpdateMediaTagRequestDto
 import com.example.securechatapp.data.remote.dto.UpdateFcmTokenRequestDto
 import com.example.securechatapp.data.remote.dto.ConversationSettingsResponseDto
 import com.example.securechatapp.data.remote.dto.UpdateConversationSettingsRequestDto
@@ -66,6 +74,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Part
 import retrofit2.http.Query
@@ -143,6 +152,30 @@ interface ChatBackendApi {
         @Path("conversationId") conversationId: Int,
     ): ApiEnvelopeDto<GetConversationResponseDto>
 
+    @GET("conversations/{conversationId}/media-tags")
+    suspend fun listConversationMediaTags(
+        @Path("conversationId") conversationId: Int,
+    ): ApiEnvelopeDto<ListMediaTagsResponseDto>
+
+    @POST("conversations/{conversationId}/media-tags")
+    suspend fun createConversationMediaTag(
+        @Path("conversationId") conversationId: Int,
+        @Body body: CreateMediaTagRequestDto,
+    ): ApiEnvelopeDto<com.example.securechatapp.data.remote.dto.MediaTagDto>
+
+    @PATCH("conversations/{conversationId}/media-tags/{tagId}")
+    suspend fun updateConversationMediaTag(
+        @Path("conversationId") conversationId: Int,
+        @Path("tagId") tagId: Int,
+        @Body body: UpdateMediaTagRequestDto,
+    ): ApiEnvelopeDto<com.example.securechatapp.data.remote.dto.MediaTagDto>
+
+    @DELETE("conversations/{conversationId}/media-tags/{tagId}")
+    suspend fun deleteConversationMediaTag(
+        @Path("conversationId") conversationId: Int,
+        @Path("tagId") tagId: Int,
+    ): ApiEnvelopeDto<DeleteMediaTagResponseDto>
+
     @POST("conversations/{conversationId}/pin")
     suspend fun pinConversation(
         @Path("conversationId") conversationId: Int,
@@ -186,6 +219,7 @@ interface ChatBackendApi {
     suspend fun listSharedMessages(
         @Path("conversationId") conversationId: Int,
         @Query("tab") tab: String,
+        @Query("tag_id") tagId: Int? = null,
         @Query("before_message_id") beforeMessageId: Int? = null,
         @Query("limit") limit: Int = 50,
     ): ApiEnvelopeDto<SharedMessagesResponseDto>
@@ -277,10 +311,21 @@ interface ChatBackendApi {
         @Path("messageId") messageId: Int,
     ): ApiEnvelopeDto<ListMessageAttachmentsResponseDto>
 
+    @POST("files/messages/attachments/batch")
+    suspend fun listAttachmentsForMessages(
+        @Body body: BatchMessageAttachmentsRequestDto,
+    ): ApiEnvelopeDto<BatchMessageAttachmentsResponseDto>
+
     @GET("files/attachments/{attachmentId}")
     suspend fun getAttachmentMetadata(
         @Path("attachmentId") attachmentId: Int,
     ): ApiEnvelopeDto<GetAttachmentResponseDto>
+
+    @PUT("files/attachments/{attachmentId}/media-tags")
+    suspend fun setAttachmentMediaTags(
+        @Path("attachmentId") attachmentId: Int,
+        @Body body: SetAttachmentTagsRequestDto,
+    ): ApiEnvelopeDto<AttachmentTagsResponseDto>
 
     @GET("files/apk/latest")
     suspend fun getLatestApkRelease(): ApiEnvelopeDto<LatestAppReleaseResponseDto>

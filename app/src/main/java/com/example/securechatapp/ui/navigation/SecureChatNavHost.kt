@@ -20,10 +20,12 @@ import com.example.securechatapp.ui.screens.auth.RegisterScreen
 import com.example.securechatapp.ui.screens.auth.SplashScreen
 import com.example.securechatapp.ui.screens.auth.VerifyEmailCodeScreen
 import com.example.securechatapp.ui.screens.chats.ChatsScreen
+import com.example.securechatapp.ui.screens.conversation.ConversationMediaScreen
 import com.example.securechatapp.ui.screens.conversation.ConversationScreen
 import com.example.securechatapp.ui.screens.settings.SettingsScreen
 import com.example.securechatapp.ui.viewmodel.AuthViewModel
 import com.example.securechatapp.ui.viewmodel.ChatsViewModel
+import com.example.securechatapp.ui.viewmodel.ConversationMediaViewModel
 import com.example.securechatapp.ui.viewmodel.ConversationViewModel
 import com.example.securechatapp.ui.viewmodel.SettingsViewModel
 
@@ -245,12 +247,28 @@ fun SecureChatNavHost(
             ConversationScreen(
                 viewModel = conversationViewModel,
                 onBack = { navController.popBackStack() },
+                onOpenMedia = { conversationId ->
+                    navController.navigate(Routes.conversationMediaRoute(conversationId))
+                },
                 onLoggedOut = {
                     navController.navigate(Routes.Login) {
                         popUpTo(Routes.Chats) { inclusive = true }
                         launchSingleTop = true
                     }
                 }
+            )
+        }
+
+        composable(
+            route = Routes.ConversationMediaPattern,
+            arguments = listOf(
+                navArgument(Routes.ConversationArg) { type = NavType.IntType }
+            ),
+        ) {
+            val mediaViewModel: ConversationMediaViewModel = hiltViewModel()
+            ConversationMediaScreen(
+                viewModel = mediaViewModel,
+                onBack = { navController.popBackStack() },
             )
         }
     }

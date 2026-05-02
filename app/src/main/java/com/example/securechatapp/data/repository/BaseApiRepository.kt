@@ -73,3 +73,7 @@ abstract class BaseApiRepository(
         }
     }
 }
+
+fun Throwable.isRecoverableNetworkUncertainty(): Boolean {
+    return this is BackendApiException && code == "NETWORK_ERROR"
+}

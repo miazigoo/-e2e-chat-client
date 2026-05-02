@@ -105,9 +105,10 @@ class ConversationRepository @Inject constructor(
         return ConversationDetails(
             conversationId = data.conversationId,
             conversationUuid = data.conversationUuid,
-            title = buildConversationTitle(data.title, data.isSavedMessages, null, data.peerUserId),
+            title = data.title.orEmpty(),
             isSavedMessages = data.isSavedMessages,
             peerUserId = data.peerUserId,
+            peerNickname = null,
             protectionMode = data.protectionMode,
             messageTtlDays = data.messageTtlDays,
             deleteAfterReadSeconds = data.deleteAfterReadSeconds,

@@ -16,6 +16,7 @@ import com.example.securechatapp.data.remote.websocket.RealtimeWebSocketManager
 import com.example.securechatapp.data.repository.AttachmentRepository
 import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
+import com.example.securechatapp.data.repository.MediaTagRepository
 import com.example.securechatapp.data.repository.MessageRepository
 import com.example.securechatapp.data.repository.OutboxDispatcher
 import com.example.securechatapp.data.repository.OutboxRepository
@@ -26,6 +27,7 @@ import com.example.securechatapp.domain.model.ChatMessage
 import com.example.securechatapp.domain.model.ConversationEventTypes
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.ConversationSyncEvent
+import com.example.securechatapp.domain.model.MediaTag
 import com.example.securechatapp.domain.model.MessagePreview
 import com.example.securechatapp.domain.model.MessageSendStatus
 import com.example.securechatapp.ui.navigation.Routes
@@ -72,6 +74,8 @@ data class ConversationUiState(
     val localSharedSecretEnabled: Boolean = false,
     val localSharedSecretFingerprint: String? = null,
     val peerSharedSecretEnabled: Boolean = false,
+    val conversationMediaTags: List<MediaTag> = emptyList(),
+    val isLoadingMediaTags: Boolean = false,
     val pinnedMessage: MessagePreview? = null,
     val replyingTo: MessagePreview? = null,
     val messages: List<ChatMessage> = emptyList(),
@@ -105,6 +109,21 @@ data class InlineAttachmentPreviewUi(
 private const val INLINE_PREVIEW_MAX_ATTEMPTS = 4
 private const val INLINE_PREVIEW_RETRY_DELAY_MS = 650L
 
+private fun resolveConversationTitle(
+    rawTitle: String,
+    isSavedMessages: Boolean,
+    peerNickname: String?,
+    peerUserId: Int,
+): String {
+    return when {
+        isSavedMessages -> rawTitle.ifBlank { "Избранное" }
+        !rawTitle.isBlank() && !rawTitle.startsWith("Пользователь #") -> rawTitle
+        !peerNickname.isNullOrBlank() -> peerNickname
+        !rawTitle.isBlank() -> rawTitle
+        else -> "Пользователь #$peerUserId"
+    }
+}
+
 private enum class MessageViewportMode {
     LATEST,
     ANCHORED,
@@ -116,6 +135,7 @@ class ConversationViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val attachmentRepository: AttachmentRepository,
+    private val mediaTagRepository: MediaTagRepository,
     private val chatCacheRepository: ChatCacheRepository,
     private val outboxRepository: OutboxRepository,
     private val outboxDispatcher: OutboxDispatcher,
@@ -157,6 +177,171 @@ class ConversationViewModel @Inject constructor(
 
     fun retryLoad() {
         loadConversation()
+    }
+
+    fun ensureConversationMediaTagsLoaded() {
+        val current = _state.value
+        if (current.isLoadingMediaTags) return
+        if (current.conversationMediaTags.isNotEmpty()) return
+        refreshConversationMediaTags()
+    }
+
+    fun refreshConversationMediaTags() {
+        val currentConversationId = _state.value.conversationId ?: return
+        viewModelScope.launch {
+            val cachedTags = mediaTagRepository.listCachedConversationTags(currentConversationId)
+            _state.value = _state.value.copy(
+                conversationMediaTags = if (cachedTags.isNotEmpty()) cachedTags else _state.value.conversationMediaTags,
+                isLoadingMediaTags = true,
+                error = null,
+            )
+
+            runCatching {
+                mediaTagRepository.listConversationTags(currentConversationId)
+            }.onSuccess { tags ->
+                _state.value = _state.value.copy(
+                    conversationMediaTags = tags,
+                    isLoadingMediaTags = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    isLoadingMediaTags = false,
+                    error = if (cachedTags.isEmpty()) {
+                        it.message ?: "Не удалось загрузить теги медиа"
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+
+    fun createConversationMediaTag(
+        name: String,
+        color: String?,
+    ) {
+        val currentConversationId = _state.value.conversationId ?: return
+        viewModelScope.launch {
+            runCatching {
+                mediaTagRepository.createTag(
+                    conversationId = currentConversationId,
+                    name = name,
+                    color = color,
+                )
+            }.onSuccess { created ->
+                _state.value = _state.value.copy(
+                    conversationMediaTags = (_state.value.conversationMediaTags + created)
+                        .sortedBy { it.name.lowercase() },
+                    info = "Тег создан",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось создать тег",
+                )
+            }
+        }
+    }
+
+    fun updateConversationMediaTag(
+        tagId: Int,
+        name: String,
+        color: String?,
+    ) {
+        val currentConversationId = _state.value.conversationId ?: return
+        viewModelScope.launch {
+            runCatching {
+                mediaTagRepository.updateTag(
+                    conversationId = currentConversationId,
+                    tagId = tagId,
+                    name = name,
+                    color = color,
+                )
+            }.onSuccess { updated ->
+                _state.value = _state.value.copy(
+                    conversationMediaTags = _state.value.conversationMediaTags
+                        .map { tag -> if (tag.tagId == updated.tagId) updated else tag }
+                        .sortedBy { it.name.lowercase() },
+                    info = "Тег обновлён",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось обновить тег",
+                )
+            }
+        }
+    }
+
+    fun deleteConversationMediaTag(
+        tagId: Int,
+    ) {
+        val currentConversationId = _state.value.conversationId ?: return
+        viewModelScope.launch {
+            runCatching {
+                mediaTagRepository.deleteTag(
+                    conversationId = currentConversationId,
+                    tagId = tagId,
+                )
+            }.onSuccess {
+                _state.value = _state.value.copy(
+                    conversationMediaTags = _state.value.conversationMediaTags
+                        .filterNot { it.tagId == tagId },
+                    selectedMessageAttachments = _state.value.selectedMessageAttachments.map { attachment ->
+                        if (attachment.mediaTags.none { tag -> tag.tagId == tagId }) {
+                            attachment
+                        } else {
+                            attachment.copy(
+                                mediaTags = attachment.mediaTags.filterNot { tag -> tag.tagId == tagId }
+                            )
+                        }
+                    },
+                    info = "Тег удалён",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось удалить тег",
+                )
+            }
+        }
+    }
+
+    fun setAttachmentTags(
+        attachmentId: Int,
+        tagIds: List<Int>,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                attachmentRepository.setAttachmentTags(
+                    attachmentId = attachmentId,
+                    tagIds = tagIds,
+                )
+            }.onSuccess { updatedTags ->
+                fun updateAttachment(attachment: AttachmentItem): AttachmentItem {
+                    return if (attachment.attachmentId == attachmentId) {
+                        attachment.copy(mediaTags = updatedTags)
+                    } else {
+                        attachment
+                    }
+                }
+
+                _state.value = _state.value.copy(
+                    selectedMessageAttachments = _state.value.selectedMessageAttachments.map(::updateAttachment),
+                    messages = _state.value.messages.map { message ->
+                        if (message.attachments.any { it.attachmentId == attachmentId }) {
+                            message.copy(
+                                attachments = message.attachments.map(::updateAttachment),
+                            )
+                        } else {
+                            message
+                        }
+                    },
+                    info = "Теги обновлены",
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    error = it.message ?: "Не удалось обновить теги вложения",
+                )
+            }
+        }
     }
 
 
@@ -222,6 +407,7 @@ fun disableSharedSecret() {
 
     fun sendMessage(
         text: String,
+        attachmentTagIds: List<Int> = emptyList(),
         attachmentDrafts: List<AttachmentItem> = emptyList(),
         attachmentUris: List<Uri> = emptyList(),
         onQueued: () -> Unit = {},
@@ -247,6 +433,7 @@ fun disableSharedSecret() {
                     replyToMessageId = replyingTo?.messageId,
                     replyPreview = replyingTo,
                     localAttachmentUris = attachmentUris.map(Uri::toString),
+                    attachmentTagIds = attachmentTagIds,
                     attachmentPreviews = attachmentDrafts,
                     attachmentIds = emptyList(),
                     attachmentDescriptors = emptyList(),
@@ -698,6 +885,7 @@ fun disableSharedSecret() {
     }
 
     fun showMessageAttachments(message: ChatMessage) {
+        ensureConversationMediaTagsLoaded()
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 attachmentSheetMessageId = message.messageId,
@@ -847,6 +1035,7 @@ fun disableSharedSecret() {
                 val conversation = conversationRepository.getConversation(conversationId)
                 chatCacheRepository.upsertConversationDetails(conversation)
                 refreshSharedSecretState(conversation)
+                refreshConversationMediaTags()
 
                 outboxRepository.requeueSendingMessages(conversationId)
                 catchUpCursorToLatest()
@@ -875,10 +1064,16 @@ private fun refreshSharedSecretState(
     details: com.example.securechatapp.domain.model.ConversationDetails,
 ) {
     val localState = sharedSecretCrypto.getState(details.conversationUuid)
+    val resolvedTitle = resolveConversationTitle(
+        rawTitle = details.title,
+        isSavedMessages = details.isSavedMessages,
+        peerNickname = details.peerNickname,
+        peerUserId = details.peerUserId,
+    )
     _state.value = _state.value.copy(
         conversationId = details.conversationId,
         conversationUuid = details.conversationUuid,
-        title = details.title,
+        title = resolvedTitle,
         isSavedMessages = details.isSavedMessages,
         peerUserId = details.peerUserId,
         protectionMode = details.protectionMode,
@@ -899,10 +1094,16 @@ private fun refreshSharedSecretState(
         launchGuarded {
             chatCacheRepository.observeConversationDetails(conversationId).collect { details ->
                 if (details != null) {
+                    val resolvedTitle = resolveConversationTitle(
+                        rawTitle = details.title,
+                        isSavedMessages = details.isSavedMessages,
+                        peerNickname = details.peerNickname,
+                        peerUserId = details.peerUserId,
+                    )
                     _state.value = _state.value.copy(
                         conversationId = details.conversationId,
                         conversationUuid = details.conversationUuid,
-                        title = details.title,
+                        title = resolvedTitle,
                         isSavedMessages = details.isSavedMessages,
                         peerUserId = details.peerUserId,
                         protectionMode = details.protectionMode,
@@ -1307,63 +1508,61 @@ private fun refreshSharedSecretState(
             error = null,
         )
 
-        val deliveredCount = if (markDelivered) {
+        val deliveredUpdates = if (markDelivered) {
             messageRepository.markIncomingMessagesAsDelivered(messages)
         } else {
-            0
+            emptyList()
         }
 
-        val readCount = if (markRead) {
+        val readUpdates = if (markRead) {
             messageRepository.markIncomingMessagesAsRead(messages)
         } else {
-            0
+            emptyList()
         }
 
-        if (deliveredCount > 0 || readCount > 0) {
-            val refreshedPage = when (messageViewportMode) {
-                MessageViewportMode.LATEST -> {
-                    messageRepository.listMessageWindow(
-                        conversationId = currentConversationId,
-                        peerUserId = peerUserId,
-                    )
-                }
-
-                MessageViewportMode.ANCHORED -> {
-                    val activeAnchorId = _state.value.anchoredMessageId
-                        ?: _state.value.pinnedMessage?.messageId
-                        ?: return
-                    messageRepository.listMessageWindow(
-                        conversationId = currentConversationId,
-                        peerUserId = peerUserId,
-                        anchorId = activeAnchorId,
-                    )
-                }
-            }
-            applyWindowMetadata(
-                page = refreshedPage,
-                anchorMessageId = when (messageViewportMode) {
-                    MessageViewportMode.LATEST -> null
-                    MessageViewportMode.ANCHORED -> refreshedPage.anchorMessageId ?: _state.value.anchoredMessageId
-                },
-                requestScroll = false,
+        deliveredUpdates.forEach { update ->
+            chatCacheRepository.markMessageDelivered(
+                messageId = update.messageId,
+                deliveredAt = update.timestamp,
             )
-
-            chatCacheRepository.replaceMessages(
+        }
+        readUpdates.forEach { update ->
+            chatCacheRepository.markMessageRead(
+                messageId = update.messageId,
+                readAt = update.timestamp,
+            )
+        }
+        if (readUpdates.isNotEmpty()) {
+            chatCacheRepository.updateConversationUnreadCount(
                 conversationId = currentConversationId,
-                messages = refreshedPage.messages,
+                unreadCount = 0,
             )
-
-            conversationsRefreshBus.requestRefresh()
         }
     }
 
     private suspend fun markMessagesAroundViewport(
         messages: List<ChatMessage>,
     ) {
-        val deliveredCount = messageRepository.markIncomingMessagesAsDelivered(messages)
-        val readCount = messageRepository.markIncomingMessagesAsRead(messages)
-        if (deliveredCount > 0 || readCount > 0) {
-            conversationsRefreshBus.requestRefresh()
+        val deliveredUpdates = messageRepository.markIncomingMessagesAsDelivered(messages)
+        val readUpdates = messageRepository.markIncomingMessagesAsRead(messages)
+        deliveredUpdates.forEach { update ->
+            chatCacheRepository.markMessageDelivered(
+                messageId = update.messageId,
+                deliveredAt = update.timestamp,
+            )
+        }
+        readUpdates.forEach { update ->
+            chatCacheRepository.markMessageRead(
+                messageId = update.messageId,
+                readAt = update.timestamp,
+            )
+        }
+        if (readUpdates.isNotEmpty()) {
+            val currentConversationId = _state.value.conversationId ?: return
+            chatCacheRepository.updateConversationUnreadCount(
+                conversationId = currentConversationId,
+                unreadCount = 0,
+            )
         }
     }
 

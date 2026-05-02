@@ -10,6 +10,7 @@ import com.example.securechatapp.data.repository.ChatCacheRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.SessionRepository
 import com.example.securechatapp.domain.model.AppReleaseInfo
+import com.example.securechatapp.domain.model.ConversationEventTypes
 import com.example.securechatapp.domain.model.ConversationListItem
 import com.example.securechatapp.domain.model.UserSearchItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -261,7 +262,9 @@ class ChatsViewModel @Inject constructor(
                     }
 
                     is RealtimeEvent.ConversationEvent -> {
-                        refreshConversations()
+                        if (shouldRefreshConversations(event.eventType)) {
+                            refreshConversations()
+                        }
                     }
 
                     is RealtimeEvent.DeviceApprovalRequested -> {
@@ -297,6 +300,25 @@ class ChatsViewModel @Inject constructor(
                 info = "Доступно обновление ${enrichedRelease.versionName} (${enrichedRelease.versionCode})",
                 error = null,
             )
+        }
+    }
+
+    private fun shouldRefreshConversations(
+        eventType: String,
+    ): Boolean {
+        return when (eventType) {
+            ConversationEventTypes.MESSAGE_CREATED,
+            ConversationEventTypes.MESSAGE_FORWARDED,
+            ConversationEventTypes.MESSAGE_DELETED_GLOBAL,
+            ConversationEventTypes.MESSAGE_HIDDEN_FOR_USER,
+            ConversationEventTypes.CONVERSATION_CLEARED_LOCAL,
+            ConversationEventTypes.CONVERSATION_CLEARED_GLOBAL,
+            ConversationEventTypes.CONVERSATION_PURGED,
+            ConversationEventTypes.CONVERSATION_PINNED,
+            ConversationEventTypes.CONVERSATION_UNPINNED,
+            ConversationEventTypes.CONVERSATION_DELETED -> true
+
+            else -> false
         }
     }
 }

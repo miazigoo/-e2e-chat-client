@@ -64,6 +64,11 @@ class MessageRepository @Inject constructor(
         val afterCursor: String? = null,
     )
 
+    data class DeliveryStatusUpdate(
+        val messageId: Int,
+        val timestamp: String,
+    )
+
     suspend fun listMessages(
         conversationId: Int,
         peerUserId: Int,
@@ -164,6 +169,8 @@ class MessageRepository @Inject constructor(
         conversationId: Int,
         peerUserId: Int,
         tab: String,
+        tagId: Int? = null,
+        beforeMessageId: Int? = null,
     ): SharedMessagesPage {
         val conversation = safe { api.getConversation(conversationId).data }
         val conversationUuid = conversation.conversationUuid
@@ -172,6 +179,8 @@ class MessageRepository @Inject constructor(
             api.listSharedMessages(
                 conversationId = conversationId,
                 tab = tab,
+                tagId = tagId,
+                beforeMessageId = beforeMessageId,
             ).data
         }
         val decodeContext = buildDecodeContext(data.items)
@@ -203,7 +212,7 @@ class MessageRepository @Inject constructor(
 
     suspend fun markIncomingMessagesAsDelivered(
         messages: List<ChatMessage>,
-    ): Int {
+    ): List<DeliveryStatusUpdate> {
         val undeliveredIncoming = messages
             .filter {
                 !it.isMine &&
@@ -213,21 +222,27 @@ class MessageRepository @Inject constructor(
             }
             .distinctBy { it.messageId }
 
+        val updates = mutableListOf<DeliveryStatusUpdate>()
         undeliveredIncoming.forEach { message ->
+            val deliveredAt = crypto.nowIso()
             safe {
                 api.markDelivered(
                     messageId = message.messageId,
-                    body = MarkDeliveredRequestDto(deliveredAt = crypto.nowIso()),
+                    body = MarkDeliveredRequestDto(deliveredAt = deliveredAt),
                 )
             }
+            updates += DeliveryStatusUpdate(
+                messageId = message.messageId,
+                timestamp = deliveredAt,
+            )
         }
 
-        return undeliveredIncoming.size
+        return updates
     }
 
     suspend fun markIncomingMessagesAsRead(
         messages: List<ChatMessage>,
-    ): Int {
+    ): List<DeliveryStatusUpdate> {
         val unreadIncoming = messages
             .filter {
                 !it.isMine &&
@@ -237,16 +252,22 @@ class MessageRepository @Inject constructor(
             }
             .distinctBy { it.messageId }
 
+        val updates = mutableListOf<DeliveryStatusUpdate>()
         unreadIncoming.forEach { message ->
+            val readAt = crypto.nowIso()
             safe {
                 api.markRead(
                     messageId = message.messageId,
-                    body = MarkReadRequestDto(readAt = crypto.nowIso()),
+                    body = MarkReadRequestDto(readAt = readAt),
                 )
             }
+            updates += DeliveryStatusUpdate(
+                messageId = message.messageId,
+                timestamp = readAt,
+            )
         }
 
-        return unreadIncoming.size
+        return updates
     }
 
     suspend fun sendMessage(
@@ -255,6 +276,7 @@ class MessageRepository @Inject constructor(
         plainText: String,
         replyToMessageId: Int? = null,
         attachmentIds: List<Int> = emptyList(),
+        attachmentTagIds: List<Int> = emptyList(),
         attachmentDescriptors: List<EncryptedAttachmentDescriptor> = emptyList(),
         messageUuid: String = UUID.randomUUID().toString(),
     ): SendMessageResponseDto {
@@ -341,6 +363,11 @@ class MessageRepository @Inject constructor(
                     clientCreatedAt = crypto.nowIso(),
                     replyToMessageId = replyToMessageId,
                     attachmentIds = distinctAttachmentIds,
+                    attachmentTagIds = if (distinctAttachmentIds.isEmpty()) {
+                        emptyList()
+                    } else {
+                        attachmentTagIds.distinct()
+                    },
                     devicePayloads = devicePayloads,
                 )
             ).data

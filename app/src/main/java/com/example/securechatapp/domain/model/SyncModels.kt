@@ -38,4 +38,7 @@ object ConversationEventTypes {
     const val FILE_DELETED = "file_deleted"
     const val PARTICIPANT_KEY_CHANGED = "participant_key_changed"
     const val CONVERSATION_PURGED = "conversation_purged"
+    const val CONVERSATION_PINNED = "conversation_pinned"
+    const val CONVERSATION_UNPINNED = "conversation_unpinned"
+    const val CONVERSATION_DELETED = "conversation_deleted"
 }

@@ -38,6 +38,7 @@ data class ConversationDetails(
     val title: String,
     val isSavedMessages: Boolean = false,
     val peerUserId: Int,
+    val peerNickname: String? = null,
     val protectionMode: String,
     val messageTtlDays: Int? = null,
     val deleteAfterReadSeconds: Int? = null,
@@ -108,6 +109,17 @@ data class MessagePreview(
 )
 
 @Serializable
+data class MediaTag(
+    val tagId: Int,
+    val conversationId: Int,
+    val name: String,
+    val color: String? = null,
+    val createdByUserId: Int? = null,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+@Serializable
 data class AttachmentItem(
     val attachmentId: Int,
     val fileName: String,
@@ -117,6 +129,7 @@ data class AttachmentItem(
     val blobKeyBase64: String? = null,
     val blobNonceBase64: String? = null,
     val sha256EncryptedBlob: String? = null,
+    val mediaTags: List<MediaTag> = emptyList(),
 ) {
     val isImage: Boolean
         get() = mimeType?.startsWith("image/") == true

@@ -10,6 +10,8 @@ object Routes {
 
     const val ConversationArg = "conversationId"
     const val ConversationPattern = "conversation/{$ConversationArg}"
+    const val ConversationMediaPattern = "conversation/{$ConversationArg}/media"
 
     fun conversationRoute(conversationId: Int): String = "conversation/$conversationId"
+    fun conversationMediaRoute(conversationId: Int): String = "conversation/$conversationId/media"
 }

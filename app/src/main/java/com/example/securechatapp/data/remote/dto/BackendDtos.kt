@@ -526,6 +526,8 @@ data class SendMessageRequestDto(
     val expiresAt: String? = null,
     @SerialName("attachment_ids")
     val attachmentIds: List<Int> = emptyList(),
+    @SerialName("attachment_tag_ids")
+    val attachmentTagIds: List<Int> = emptyList(),
     @SerialName("device_payloads")
     val devicePayloads: List<MessageDevicePayloadRequestDto> = emptyList(),
 )
@@ -862,6 +864,65 @@ data class AttachmentInitItemDto(
 )
 
 @Serializable
+data class MediaTagDto(
+    @SerialName("tag_id")
+    val tagId: Int,
+    @SerialName("conversation_id")
+    val conversationId: Int,
+    val name: String,
+    val color: String? = null,
+    @SerialName("created_by_user_id")
+    val createdByUserId: Int? = null,
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("updated_at")
+    val updatedAt: String,
+)
+
+@Serializable
+data class ListMediaTagsResponseDto(
+    val items: List<MediaTagDto> = emptyList(),
+)
+
+@Serializable
+data class CreateMediaTagRequestDto(
+    val name: String,
+    val color: String? = null,
+)
+
+@Serializable
+data class UpdateMediaTagRequestDto(
+    val name: String? = null,
+    val color: String? = null,
+)
+
+@Serializable
+data class AssignAttachmentTagsRequestDto(
+    @SerialName("tag_ids")
+    val tagIds: List<Int>,
+)
+
+@Serializable
+data class SetAttachmentTagsRequestDto(
+    @SerialName("tag_ids")
+    val tagIds: List<Int>,
+)
+
+@Serializable
+data class AttachmentTagsResponseDto(
+    @SerialName("attachment_id")
+    val attachmentId: Int,
+    val items: List<MediaTagDto> = emptyList(),
+)
+
+@Serializable
+data class DeleteMediaTagResponseDto(
+    @SerialName("tag_id")
+    val tagId: Int,
+    val deleted: Boolean,
+)
+
+@Serializable
 data class InitAttachmentsResponseDto(
     @SerialName("session_id")
     val sessionId: Int,
@@ -942,6 +1003,8 @@ data class AttachmentMetadataItemDto(
     val expiresAt: String? = null,
     @SerialName("deleted_at")
     val deletedAt: String? = null,
+    @SerialName("media_tags")
+    val mediaTags: List<MediaTagDto> = emptyList(),
 )
 
 @Serializable
@@ -981,6 +1044,24 @@ data class ListMessageAttachmentsResponseDto(
 )
 
 @Serializable
+data class BatchMessageAttachmentsRequestDto(
+    @SerialName("message_ids")
+    val messageIds: List<Int>,
+)
+
+@Serializable
+data class MessageAttachmentsGroupDto(
+    @SerialName("message_id")
+    val messageId: Int,
+    val items: List<AttachmentMetadataItemDto> = emptyList(),
+)
+
+@Serializable
+data class BatchMessageAttachmentsResponseDto(
+    val items: List<MessageAttachmentsGroupDto> = emptyList(),
+)
+
+@Serializable
 data class GetAttachmentResponseDto(
     @SerialName("attachment_id")
     val attachmentId: Int,
@@ -1010,6 +1091,8 @@ data class GetAttachmentResponseDto(
     val expiresAt: String? = null,
     @SerialName("deleted_at")
     val deletedAt: String? = null,
+    @SerialName("media_tags")
+    val mediaTags: List<MediaTagDto> = emptyList(),
     @SerialName("can_download")
     val canDownload: Boolean = true,
     @SerialName("download_url")

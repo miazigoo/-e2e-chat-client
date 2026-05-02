@@ -33,6 +33,7 @@ fun ConversationTopBar(
     subtitle: String,
     onBack: () -> Unit,
     onLogout: () -> Unit,
+    onTitleClick: () -> Unit,
     onSharedSecretClick: () -> Unit,
     isLoggingOut: Boolean,
     sharedSecretEnabled: Boolean,
@@ -75,58 +76,66 @@ fun ConversationTopBar(
                     onClick = onBack,
                 )
 
-                Surface(
+                Row(
                     modifier = Modifier
-                        .padding(start = 10.dp)
-                        .size(42.dp)
-                        .clip(CircleShape),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                        .weight(1f)
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable(onClick = onTitleClick)
+                        .padding(start = 10.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                     Surface(
-                        color = lockColor,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
-                        ),
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
                     ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = title.trim().removePrefix("@").firstOrNull()?.uppercase() ?: "?",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column {
                         Text(
-                            text = "$lockEmoji $lockLabel",
-                            style = MaterialTheme.typography.labelSmall,
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Surface(
+                            color = lockColor,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+                            ),
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            Text(
+                                text = "$lockEmoji $lockLabel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
                     }
                 }
 

@@ -43,6 +43,7 @@ fun ConversationCacheEntity.toConversationDetails(): ConversationDetails {
         title = title,
         isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
+        peerNickname = peerNickname.ifBlank { null },
         protectionMode = protectionMode ?: "normal",
         messageTtlDays = messageTtlDays,
         deleteAfterReadSeconds = deleteAfterReadSeconds,
@@ -82,13 +83,25 @@ fun ConversationListItem.toEntity(previous: ConversationCacheEntity?): Conversat
 }
 
 fun ConversationDetails.toEntity(previous: ConversationCacheEntity?): ConversationCacheEntity {
+    val preservedPeerNickname = peerNickname?.takeIf { it.isNotBlank() }
+        ?: previous?.peerNickname?.takeIf { it.isNotBlank() }
+        ?: ""
+    val resolvedTitle = title.ifBlank {
+        previous?.title?.takeIf { it.isNotBlank() }
+            ?: when {
+                isSavedMessages -> "Избранное"
+                preservedPeerNickname.isNotBlank() -> preservedPeerNickname
+                else -> "Пользователь #$peerUserId"
+            }
+    }
+
     return ConversationCacheEntity(
         conversationId = conversationId,
         conversationUuid = conversationUuid,
-        title = title,
+        title = resolvedTitle,
         isSavedMessages = isSavedMessages,
         peerUserId = peerUserId,
-        peerNickname = previous?.peerNickname.orEmpty(),
+        peerNickname = preservedPeerNickname,
         unreadCount = previous?.unreadCount ?: 0,
         lastMessagePreview = previous?.lastMessagePreview ?: "Нет сообщений",
         updatedAt = previous?.updatedAt,
