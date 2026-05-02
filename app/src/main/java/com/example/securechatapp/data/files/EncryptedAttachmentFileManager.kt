@@ -58,6 +58,7 @@ class EncryptedAttachmentFileManager @Inject constructor(
         mimeType: String?,
         blobKeyBase64: String,
         blobNonceBase64: String,
+        destinationSubdirectory: String? = null,
     ): Uri? = withContext(Dispatchers.IO) {
         val plainBytes = downloadAndDecryptBytes(
             downloadUrl = downloadUrl,
@@ -78,7 +79,7 @@ class EncryptedAttachmentFileManager @Inject constructor(
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType ?: "application/octet-stream")
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
-                "${Environment.DIRECTORY_DOWNLOADS}/SecureChat"
+                buildRelativeDownloadsPath(destinationSubdirectory)
             )
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
@@ -219,6 +220,23 @@ class EncryptedAttachmentFileManager @Inject constructor(
         return value
             .replace(Regex("""[\\/:*?"<>|]"""), "_")
             .trim()
+    }
+
+    private fun buildRelativeDownloadsPath(
+        destinationSubdirectory: String?,
+    ): String {
+        val normalizedSubdirectory = destinationSubdirectory
+            ?.split('/')
+            ?.map(::sanitizeFileName)
+            ?.filter { it.isNotBlank() }
+            ?.joinToString("/")
+            .orEmpty()
+
+        return if (normalizedSubdirectory.isBlank()) {
+            "${Environment.DIRECTORY_DOWNLOADS}/SecureChat"
+        } else {
+            "${Environment.DIRECTORY_DOWNLOADS}/$normalizedSubdirectory"
+        }
     }
 
     private data class SavedAttachmentRecord(

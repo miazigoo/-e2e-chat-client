@@ -3,6 +3,8 @@ package com.example.securechatapp.ui.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.securechatapp.data.files.AttachmentDownloadManager
+import com.example.securechatapp.data.files.EncryptedAttachmentFileManager
 import com.example.securechatapp.data.repository.AttachmentRepository
 import com.example.securechatapp.data.repository.ConversationRepository
 import com.example.securechatapp.data.repository.MediaTagRepository
@@ -45,6 +47,8 @@ data class ConversationMediaUiState(
     val attachmentItems: List<ConversationMediaAttachmentEntry> = emptyList(),
     val linkMessages: List<ChatMessage> = emptyList(),
     val hasMore: Boolean = false,
+    val info: String? = null,
+    val isBulkDownloadingTag: Boolean = false,
 )
 
 @HiltViewModel
@@ -54,6 +58,8 @@ class ConversationMediaViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val attachmentRepository: AttachmentRepository,
     private val mediaTagRepository: MediaTagRepository,
+    private val attachmentDownloadManager: AttachmentDownloadManager,
+    private val encryptedAttachmentFileManager: EncryptedAttachmentFileManager,
 ) : ViewModel() {
 
     private val conversationId: Int = checkNotNull(stateHandle.get<Int>(Routes.ConversationArg))
@@ -175,6 +181,91 @@ class ConversationMediaViewModel @Inject constructor(
     fun dismissError(error: String) {
         if (_state.value.error == error) {
             _state.value = _state.value.copy(error = null)
+        }
+    }
+
+    fun dismissInfo(info: String) {
+        if (_state.value.info == info) {
+            _state.value = _state.value.copy(info = null)
+        }
+    }
+
+    fun downloadSelectedTagAttachments() {
+        val state = _state.value
+        val tag = state.tags.firstOrNull { it.tagId == state.selectedTagId } ?: run {
+            _state.value = state.copy(error = "Сначала выберите тег")
+            return
+        }
+        val attachments = state.attachmentItems
+            .map { it.attachment }
+            .distinctBy { it.attachmentId }
+            .filter { attachment ->
+                attachment.mediaTags.any { it.tagId == tag.tagId }
+            }
+
+        if (attachments.isEmpty()) {
+            _state.value = state.copy(error = "По выбранному тегу нечего скачивать")
+            return
+        }
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isBulkDownloadingTag = true,
+                error = null,
+                info = null,
+            )
+
+            val destinationSubdirectory = sanitizeDownloadFolderName(tag.name)
+            var queuedCount = 0
+            var failedCount = 0
+
+            attachments.forEach { attachment ->
+                val result = runCatching {
+                    val downloadInfo = attachmentRepository.getAttachmentDownloadInfo(
+                        attachment.attachmentId,
+                    ) ?: error("Вложение недоступно для скачивания")
+
+                    if (attachment.hasEncryptedBlobKeys) {
+                        encryptedAttachmentFileManager.saveDecryptedAttachmentToDownloads(
+                            attachmentId = attachment.attachmentId,
+                            downloadUrl = downloadInfo.downloadUrl,
+                            fileName = downloadInfo.fileName,
+                            mimeType = downloadInfo.mimeType,
+                            blobKeyBase64 = attachment.blobKeyBase64.orEmpty(),
+                            blobNonceBase64 = attachment.blobNonceBase64.orEmpty(),
+                            destinationSubdirectory = destinationSubdirectory,
+                        ) ?: error("Не удалось сохранить вложение")
+                    } else {
+                        attachmentDownloadManager.enqueueDownload(
+                            attachmentId = downloadInfo.attachmentId,
+                            url = downloadInfo.downloadUrl,
+                            fileName = downloadInfo.fileName,
+                            mimeType = downloadInfo.mimeType,
+                            destinationSubdirectory = destinationSubdirectory,
+                        )
+                    }
+                }
+
+                if (result.isSuccess) {
+                    queuedCount += 1
+                } else {
+                    failedCount += 1
+                }
+            }
+
+            _state.value = _state.value.copy(
+                isBulkDownloadingTag = false,
+                info = buildBulkDownloadResultMessage(
+                    tagName = tag.name,
+                    successCount = queuedCount,
+                    failedCount = failedCount,
+                ),
+                error = if (queuedCount == 0) {
+                    "Не удалось скачать вложения тега"
+                } else {
+                    null
+                },
+            )
         }
     }
 
@@ -335,6 +426,29 @@ class ConversationMediaViewModel @Inject constructor(
                     attachment.mimeType?.startsWith("video/") != true
             }
             ConversationMediaTab.LINKS -> false
+        }
+    }
+
+    private fun sanitizeDownloadFolderName(tagName: String): String {
+        return tagName
+            .replace(Regex("""[\\/:*?"<>|]"""), "_")
+            .trim()
+            .ifBlank { "tag" }
+    }
+
+    private fun buildBulkDownloadResultMessage(
+        tagName: String,
+        successCount: Int,
+        failedCount: Int,
+    ): String {
+        val targetFolder = "Downloads/$tagName"
+        return when {
+            successCount > 0 && failedCount == 0 ->
+                "Файлы тега сохранены в $targetFolder"
+            successCount > 0 ->
+                "Часть файлов тега сохранена в $targetFolder. Ошибок: $failedCount"
+            else ->
+                "Не удалось скачать файлы тега $tagName"
         }
     }
 }

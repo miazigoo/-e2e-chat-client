@@ -68,8 +68,14 @@ fun ConversationMediaScreen(
     ) {
         MediaScreenTopBar(
             title = if (state.title.isBlank()) "Медиа" else state.title,
+            selectedTagName = state.tags.firstOrNull { it.tagId == state.selectedTagId }?.name,
+            canDownloadSelectedTag = state.selectedTagId != null &&
+                state.attachmentItems.isNotEmpty() &&
+                state.selectedTab != ConversationMediaTab.LINKS,
+            isDownloadingSelectedTag = state.isBulkDownloadingTag,
             onBack = onBack,
             onManageTags = { showTagManager = true },
+            onDownloadSelectedTag = viewModel::downloadSelectedTagAttachments,
         )
 
         state.error?.let { error ->
@@ -77,6 +83,14 @@ fun ConversationMediaScreen(
                 text = error,
                 isError = true,
                 onDismiss = { viewModel.dismissError(error) },
+            )
+        }
+
+        state.info?.let { info ->
+            Banner(
+                text = info,
+                isError = false,
+                onDismiss = { viewModel.dismissInfo(info) },
             )
         }
 
@@ -220,8 +234,12 @@ fun ConversationMediaScreen(
 @Composable
 private fun MediaScreenTopBar(
     title: String,
+    selectedTagName: String?,
+    canDownloadSelectedTag: Boolean,
+    isDownloadingSelectedTag: Boolean,
     onBack: () -> Unit,
     onManageTags: () -> Unit,
+    onDownloadSelectedTag: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -270,8 +288,28 @@ private fun MediaScreenTopBar(
                 )
             }
 
-            TextButton(onClick = onManageTags) {
-                Text("Теги")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (canDownloadSelectedTag) {
+                    TextButton(
+                        onClick = onDownloadSelectedTag,
+                        enabled = !isDownloadingSelectedTag,
+                    ) {
+                        Text(
+                            if (isDownloadingSelectedTag) {
+                                "Скачиваю..."
+                            } else {
+                                selectedTagName?.let { "Скачать $it" } ?: "Скачать"
+                            }
+                        )
+                    }
+                }
+
+                TextButton(onClick = onManageTags) {
+                    Text("Теги")
+                }
             }
         }
     }

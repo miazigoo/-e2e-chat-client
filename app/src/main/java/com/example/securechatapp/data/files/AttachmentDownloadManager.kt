@@ -88,10 +88,15 @@ class AttachmentDownloadManager @Inject constructor(
         url: String,
         fileName: String,
         mimeType: String?,
+        destinationSubdirectory: String? = null,
     ): Long {
         val finalFileName = buildDownloadFileName(
             fileName = fileName,
             mimeType = mimeType,
+        )
+        val relativeDestination = buildRelativeDownloadsPath(
+            subdirectory = destinationSubdirectory,
+            fileName = finalFileName,
         )
 
         val request = DownloadManager.Request(Uri.parse(url))
@@ -105,7 +110,7 @@ class AttachmentDownloadManager @Inject constructor(
             .setMimeType(mimeType)
             .setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
-                finalFileName,
+                relativeDestination,
             )
 
         val downloadId = downloadManager.enqueue(request)
@@ -303,6 +308,24 @@ class AttachmentDownloadManager @Inject constructor(
         return value
             .replace(Regex("""[\\/:*?"<>|]"""), "_")
             .trim()
+    }
+
+    private fun buildRelativeDownloadsPath(
+        subdirectory: String?,
+        fileName: String,
+    ): String {
+        val normalizedSubdirectory = subdirectory
+            ?.split('/')
+            ?.map { sanitizeFileName(it) }
+            ?.filter { it.isNotBlank() }
+            ?.joinToString("/")
+            .orEmpty()
+
+        return if (normalizedSubdirectory.isBlank()) {
+            fileName
+        } else {
+            "$normalizedSubdirectory/$fileName"
+        }
     }
 
     private data class DownloadRecord(
